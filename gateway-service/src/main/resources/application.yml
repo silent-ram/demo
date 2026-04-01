@@ -1,0 +1,48 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    gateway:
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/user/**
+          filters:
+            - StripPrefix=1
+        - id: device-service
+          uri: lb://device-service
+          predicates:
+            - Path=/api/device/**,/api/maintenance/**
+          filters:
+            - StripPrefix=1
+        - id: collector-service
+          uri: lb://data-collector-service
+          predicates:
+            - Path=/api/collector/**
+          filters:
+            - StripPrefix=1
+        - id: alert-service
+          uri: lb://alert-service
+          predicates:
+            - Path=/api/alert/**
+          filters:
+            - StripPrefix=1
+        - id: ml-service
+          uri: http://localhost:5000
+          predicates:
+            - Path=/api/ml/**
+          filters:
+            - StripPrefix=2
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+jwt:
+  secret: ${JWT_SECRET:mySecretKeyForJWTTokenGenerationMustBeLongEnough}
+  expiration: 86400000

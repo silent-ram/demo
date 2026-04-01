@@ -1,0 +1,22 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: data-collector-service
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+influxdb:
+  url: ${INFLUXDB_URL:http://localhost:8086}
+  token: ${INFLUXDB_TOKEN:CexQOQRSk8eHkEaZGLWUEH9qcRtCeaxeeOGKunkU5NPPvSiZe8MuYvdRWL1CDonBcRJvZnVUWxDxuyh7OZKYqQ==}
+  org: ${INFLUXDB_ORG:cy}
+  bucket: ${INFLUXDB_BUCKET:sensor_data}
+
+logging:
+  level:
+    com.example.datacollectorservice: DEBUG
+    com.influxdb: DEBUG
