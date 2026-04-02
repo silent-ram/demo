@@ -68,6 +68,14 @@ logs/
 *.docx
 ebug/
 ml-service/model/fault_model.pkl
+.claude/
+tests/
+test-results/
+playwright.config.js
+.claude/
+tests/
+test-results/
+playwright.config.js
 
 # Temporary files
 *.tmp

@@ -1,6 +1,7 @@
 package com.example.datacollectorservice.controller;
 
 import com.example.datacollectorservice.dto.MetricDTO;
+import com.example.datacollectorservice.exception.Result;
 import com.example.datacollectorservice.service.InfluxDBService;
 import com.example.datacollectorservice.service.SensorSimulator;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,15 +27,16 @@ public class CollectorController {
 
     @GetMapping("/metrics/{deviceId}")
     @Operation(summary = "查询历史指标", description = "查询指定时间范围内的传感器指标")
-    public List<MetricDTO> getMetrics(
+    public Result<List<MetricDTO>> getMetrics(
             @PathVariable String deviceId,
             @RequestParam(required = false) Long startTime,
             @RequestParam(required = false) Long endTime) {
-        
+
         Instant start = startTime != null ? Instant.ofEpochSecond(startTime) : Instant.now().minusSeconds(3600);
         Instant end = endTime != null ? Instant.ofEpochSecond(endTime) : Instant.now();
-        
-        return influxDBService.queryMetrics(deviceId, start, end);
+
+        List<MetricDTO> metrics = influxDBService.queryMetrics(deviceId, start, end);
+        return Result.success(metrics);
     }
 
     @GetMapping("/latest/{deviceId}")
@@ -45,8 +47,8 @@ public class CollectorController {
 
     @GetMapping("/metrics")
     @Operation(summary = "获取所有指标", description = "获取所有传感器的指标数据")
-    public List<MetricDTO> getAllMetrics() {
-        return influxDBService.getAllMetrics();
+    public Result<List<MetricDTO>> getAllMetrics() {
+        return Result.success(influxDBService.getAllMetrics());
     }
 
     @DeleteMapping("/metrics")
