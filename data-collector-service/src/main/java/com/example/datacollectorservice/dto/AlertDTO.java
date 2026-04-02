@@ -4,22 +4,24 @@ import java.util.Map;
 
 public class AlertDTO {
     private String deviceId;
-    private String metricName;
-    private Double value;
-    private String threshold;
-    private String level;
+    private String deviceName;
+    private Double faultProbability;
+    private String alertLevel;
+    private String type;
+    private String message;
     private Map<String, Object> data;
 
     public AlertDTO() {
     }
 
-    public AlertDTO(String deviceId, String metricName, Double value, String threshold, String level, Map<String, Object> data) {
+    public AlertDTO(String deviceId, String deviceName, Double faultProbability,
+                    String alertLevel, String type, String message) {
         this.deviceId = deviceId;
-        this.metricName = metricName;
-        this.value = value;
-        this.threshold = threshold;
-        this.level = level;
-        this.data = data;
+        this.deviceName = deviceName;
+        this.faultProbability = faultProbability;
+        this.alertLevel = alertLevel;
+        this.type = type;
+        this.message = message;
     }
 
     public String getDeviceId() {
@@ -30,36 +32,44 @@ public class AlertDTO {
         this.deviceId = deviceId;
     }
 
-    public String getMetricName() {
-        return metricName;
+    public String getDeviceName() {
+        return deviceName;
     }
 
-    public void setMetricName(String metricName) {
-        this.metricName = metricName;
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
     }
 
-    public Double getValue() {
-        return value;
+    public Double getFaultProbability() {
+        return faultProbability;
     }
 
-    public void setValue(Double value) {
-        this.value = value;
+    public void setFaultProbability(Double faultProbability) {
+        this.faultProbability = faultProbability;
     }
 
-    public String getThreshold() {
-        return threshold;
+    public String getAlertLevel() {
+        return alertLevel;
     }
 
-    public void setThreshold(String threshold) {
-        this.threshold = threshold;
+    public void setAlertLevel(String alertLevel) {
+        this.alertLevel = alertLevel;
     }
 
-    public String getLevel() {
-        return level;
+    public String getType() {
+        return type;
     }
 
-    public void setLevel(String level) {
-        this.level = level;
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
     }
 
     public Map<String, Object> getData() {

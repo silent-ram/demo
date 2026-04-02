@@ -45,10 +45,20 @@ public class AlertController {
     }
 
     @PutMapping("/{id}/resolve")
-    @Operation(summary = "解决告警", description = "标记告警为已解决")
-    public Result<String> resolveAlert(@PathVariable Long id) {
-        alertService.resolveAlert(id);
-        return Result.success("告警已解决", null);
+    @Operation(summary = "处理告警", description = "处理告警，支持多种方式")
+    public Result<String> resolveAlert(
+            @PathVariable Long id,
+            @RequestParam(required = false) String resolveNote,
+            @RequestParam(required = false) Long operatorId,
+            @RequestParam(defaultValue = "COMPLETED") String resolveType) {
+        // resolveType: COMPLETED(已维修), PENDING(待维修), STOPPED(停机)
+        alertService.resolveAlert(id, resolveNote, operatorId, resolveType);
+        String message = switch (resolveType) {
+            case "COMPLETED" -> "已创建维修记录";
+            case "STOPPED" -> "设备已停机";
+            default -> "已标记为待维修";
+        };
+        return Result.success(message, null);
     }
 
     @GetMapping("/active")
@@ -114,5 +124,12 @@ public class AlertController {
     public Result<String> getChart(@PathVariable Long deviceId) {
         String chartData = alertService.getChartBase64(deviceId);
         return Result.success(chartData);
+    }
+
+    @PostMapping("/push")
+    @Operation(summary = "接收外部告警推送", description = "接收来自 data-collector-service 的告警推送")
+    public Result<String> pushAlert(@RequestBody AlertDTO alertDTO) {
+        alertService.receiveAlert(alertDTO);
+        return Result.success("告警推送成功", null);
     }
 }

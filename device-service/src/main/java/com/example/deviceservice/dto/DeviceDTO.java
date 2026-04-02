@@ -9,19 +9,21 @@ public class DeviceDTO {
     private String type;
     private String status;
     private String location;
+    private Boolean simulationEnabled;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     public DeviceDTO() {
     }
 
-    public DeviceDTO(Long id, String deviceNo, String name, String type, String status, String location, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public DeviceDTO(Long id, String deviceNo, String name, String type, String status, String location, Boolean simulationEnabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.deviceNo = deviceNo;
         this.name = name;
         this.type = type;
         this.status = status;
         this.location = location;
+        this.simulationEnabled = simulationEnabled;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -72,6 +74,14 @@ public class DeviceDTO {
 
     public void setLocation(String location) {
         this.location = location;
+    }
+
+    public Boolean getSimulationEnabled() {
+        return simulationEnabled;
+    }
+
+    public void setSimulationEnabled(Boolean simulationEnabled) {
+        this.simulationEnabled = simulationEnabled;
     }
 
     public LocalDateTime getCreatedAt() {

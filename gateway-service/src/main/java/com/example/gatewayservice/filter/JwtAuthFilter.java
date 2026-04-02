@@ -28,6 +28,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     private static final List<String> WHITE_LIST = List.of(
             "/api/user/login",
             "/api/user/register",
+            "/api/auth/login",
+            "/api/auth/register",
             "/api/ml/"
     );
 

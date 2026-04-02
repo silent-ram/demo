@@ -153,6 +153,29 @@ src/
 
 ---
 
+## 阶段四：设备独立模拟与手动控制
+
+### [x] 10. data-collector-service — 设备独立模拟 (已完成)
+- 问题：当前硬编码设备列表 `{1,2,3,4,5,6}`，不区分设备状态，所有设备共用一个全局开关
+- 目标：设备启动后才生成数据，每个设备独立模拟，支持手动调节数据
+
+**后端改造：**
+- `SensorSimulator.java`：将全局 `running` 改为 `Map<String, AtomicBoolean>` 设备独立状态
+- 新增 Feign：`DeviceServiceClient` 获取运行中设备列表
+- `CollectorController.java`：新增 `/simulate/device/{id}/start`、`/stop`、`/status`、`/set` 接口
+- 修复告警触发：数据生成后调用 ML 服务获取故障概率，超阈值时调用 `AlertServiceClient.pushAlert()`
+
+**前端改造：**
+- `DeviceDetailView.vue`：新增「传感器模拟控制」面板（滑块+开关）
+- `collector.js`：新增对应 API 调用
+
+**验证：**
+- [x] 设备 OFFLINE 状态不产生数据，NORMAL 状态开始产生
+- [x] 每个设备独立启动/停止模拟
+- [x] 手动调节传感器数值后触发相应告警
+
+---
+
 ## 验证清单
 
 - [x] MySQL 三个库建表成功，初始数据存在
@@ -166,3 +189,9 @@ src/
 - [x] 处理告警后自动创建维修记录
 - [x] 模型再训练后 /model/metrics 指标更新
 - [x] 前端所有页面正常渲染，权限控制生效
+
+### 阶段四验证
+
+- [ ] 设备 OFFLINE 不产生数据，NORMAL 开始产生
+- [ ] 每设备独立模拟开关
+- [ ] 手动调节数据触发告警

@@ -61,6 +61,13 @@
 
     <el-dialog v-model="resolveDialogVisible" title="处理告警" width="500px">
       <el-form :model="resolveForm" label-width="80px">
+        <el-form-item label="处理方式">
+          <el-radio-group v-model="resolveForm.resolveType">
+            <el-radio-button value="COMPLETED">去维修</el-radio-button>
+            <el-radio-button value="PENDING">待维修</el-radio-button>
+            <el-radio-button value="STOPPED">停机</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="处理备注">
           <el-input v-model="resolveForm.note" type="textarea" :rows="3" placeholder="请输入处理备注" />
         </el-form-item>
@@ -118,7 +125,8 @@ const filters = reactive({
 
 const resolveForm = reactive({
   id: null,
-  note: ''
+  note: '',
+  resolveType: 'COMPLETED'
 })
 
 async function loadAlerts() {
@@ -154,8 +162,7 @@ function handleResolve(row) {
 async function submitResolve() {
   resolveLoading.value = true
   try {
-    await resolveAlert(resolveForm.id)
-    alertStore.resolveAlert(resolveForm.id)
+    await resolveAlert(resolveForm.id, resolveForm.note, resolveForm.resolveType)
     ElMessage.success('处理成功')
     resolveDialogVisible.value = false
     loadAlerts()

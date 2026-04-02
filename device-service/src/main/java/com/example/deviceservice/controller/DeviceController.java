@@ -68,4 +68,18 @@ public class DeviceController {
         java.util.List<DeviceDTO> devices = deviceService.searchDevices(keyword);
         return Result.success(devices);
     }
+
+    @GetMapping("/running")
+    @Operation(summary = "获取运行中设备", description = "获取所有状态为NORMAL的设备列表")
+    public Result<java.util.List<DeviceDTO>> getRunningDevices() {
+        java.util.List<DeviceDTO> devices = deviceService.getRunningDevices();
+        return Result.success(devices);
+    }
+
+    @PutMapping("/{id}/simulation")
+    @Operation(summary = "更新设备模拟开关", description = "更新设备的模拟开关状态")
+    public Result<String> updateSimulationEnabled(@PathVariable Long id, @RequestParam Boolean enabled) {
+        deviceService.updateSimulationEnabled(id, enabled);
+        return Result.success("模拟开关更新成功", null);
+    }
 }

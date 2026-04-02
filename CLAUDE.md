@@ -127,4 +127,5 @@ src/main/java/com/example/{servicename}/
 7. `data-collector-service/` — 传感器模拟 + InfluxDB
 8. `alert-service/` — 预警 + WebSocket + Resilience4j
 9. `frontend/` — Vue 3 所有页面
+10. **阶段四** — 设备独立模拟 + 手动控制
 

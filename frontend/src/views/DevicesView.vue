@@ -21,8 +21,10 @@
             <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200">
+        <el-table-column label="操作" width="250">
           <template #default="{ row }">
+            <el-button v-if="row.status === 'OFFLINE'" type="success" link @click="handleStart(row)">启动</el-button>
+            <el-button v-else-if="row.status === 'NORMAL'" type="warning" link @click="handleStop(row)">停机</el-button>
             <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
             <el-button v-if="userStore.role === 'ADMIN'" type="primary" link @click="handleEdit(row)">编辑</el-button>
             <el-button v-if="userStore.role === 'ADMIN'" type="danger" link @click="handleDelete(row)">删除</el-button>
@@ -69,7 +71,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getDeviceList, createDevice, updateDevice, deleteDevice } from '@/api/device'
+import { getDeviceList, createDevice, updateDevice, deleteDevice, updateDeviceStatus } from '@/api/device'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -138,6 +140,30 @@ async function handleDelete(row) {
     loadDevices()
   } catch (error) {
     console.error('删除失败:', error)
+  }
+}
+
+async function handleStart(row) {
+  try {
+    await updateDeviceStatus(row.id, 'NORMAL')
+    // 设备启动时自动开启模拟
+    await updateDeviceSimulation(row.id, true)
+    ElMessage.success('设备已启动')
+    loadDevices()
+  } catch (error) {
+    console.error('启动失败:', error)
+  }
+}
+
+async function handleStop(row) {
+  try {
+    await updateDeviceStatus(row.id, 'OFFLINE')
+    // 设备停机时自动停止模拟
+    await updateDeviceSimulation(row.id, false)
+    ElMessage.success('设备已停机')
+    loadDevices()
+  } catch (error) {
+    console.error('停机失败:', error)
   }
 }
 

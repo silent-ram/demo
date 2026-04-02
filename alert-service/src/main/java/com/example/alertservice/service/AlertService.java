@@ -75,57 +75,112 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
     }
 
     public void receiveAlert(AlertDTO alertDTO) {
+        // 告警合并逻辑：检查是否有相同设备的未解决同类型告警
+        Long deviceId = null;
+        try {
+            if (alertDTO.getDeviceId() != null) {
+                deviceId = Long.parseLong(alertDTO.getDeviceId().toString());
+            }
+        } catch (NumberFormatException e) {
+            // 忽略
+        }
+
+        String alertType = alertDTO.getType();
+
+        if (deviceId != null && alertType != null) {
+            // 查询30分钟内的同设备同类型未解决告警
+            QueryWrapper<Alert> wrapper = new QueryWrapper<>();
+            wrapper.eq("device_id", deviceId);
+            wrapper.eq("type", alertType);
+            wrapper.eq("resolved", false);
+            wrapper.ge("created_at", LocalDateTime.now().minusMinutes(30));
+
+            Alert existingAlert = alertMapper.selectOne(wrapper);
+            if (existingAlert != null) {
+                // 更新告警的故障概率和消息（合并）
+                existingAlert.setFaultProbability(alertDTO.getFaultProbability());
+                existingAlert.setMessage(alertDTO.getMessage());
+                existingAlert.setUpdatedAt(LocalDateTime.now());
+                alertMapper.updateById(existingAlert);
+                // 不发送WebSocket，只更新现有告警
+                System.out.println("Alert merged for device: " + deviceId + ", type: " + alertType);
+                return;
+            }
+        }
+
+        // 无合并告警，创建新告警
         Alert alert = new Alert();
-        alert.setDeviceId(alertDTO.getDeviceId());
+        alert.setDeviceId(deviceId);
         alert.setDeviceName(alertDTO.getDeviceName());
         alert.setFaultProbability(alertDTO.getFaultProbability());
         alert.setAlertLevel(alertDTO.getAlertLevel() != null ? alertDTO.getAlertLevel() : "MEDIUM");
-        alert.setType(alertDTO.getType());
+        alert.setType(alertType);
         alert.setMessage(alertDTO.getMessage());
         alert.setResolved(false);
         alert.setCreatedAt(LocalDateTime.now());
         alert.setUpdatedAt(LocalDateTime.now());
-        
+
         alertMapper.insert(alert);
-        
+
         messagingTemplate.convertAndSend("/topic/alerts", alert);
     }
 
     public void resolveAlert(Long id) {
-        resolveAlert(id, null, null);
+        resolveAlert(id, null, null, "COMPLETED");
     }
 
     public void resolveAlert(Long id, String resolveNote, Long operatorId) {
+        resolveAlert(id, resolveNote, operatorId, "COMPLETED");
+    }
+
+    /**
+     * 处理告警
+     * @param id 告警ID
+     * @param resolveNote 处理备注
+     * @param operatorId 操作人ID
+     * @param resolveType 处理类型: COMPLETED(已维修), PENDING(待维修), STOPPED(停机)
+     */
+    public void resolveAlert(Long id, String resolveNote, Long operatorId, String resolveType) {
         Alert alert = alertMapper.selectById(id);
         if (alert == null) {
             throw new RuntimeException("Alert not found");
         }
-        
+
         alert.setResolved(true);
+        alert.setResolveNote(resolveNote);
+        alert.setResolvedBy(operatorId);
+        alert.setResolvedAt(LocalDateTime.now());
         alert.setUpdatedAt(LocalDateTime.now());
         alertMapper.updateById(alert);
-        
+
         Long deviceId = alert.getDeviceId();
-        
+
         if (deviceId != null) {
-            deviceServiceClient.updateDeviceStatus(deviceId, "NORMAL");
-            
-            MaintenanceDTO maintenance = new MaintenanceDTO();
-            maintenance.setDeviceId(deviceId);
-            maintenance.setType(alert.getType() != null ? alert.getType() : "FAULT");
-            maintenance.setDescription("告警处理: " + (alert.getMessage() != null ? alert.getMessage() : "无描述"));
-            maintenance.setAlertId(id);
-            maintenance.setActionTaken(resolveNote != null ? resolveNote : "已处理");
-            maintenance.setOperatorId(operatorId);
-            maintenance.setStatus("COMPLETED");
-            maintenance.setRepairedAt(LocalDateTime.now());
-            
-            try {
-                deviceServiceClient.createMaintenance(maintenance);
-                System.out.println("Maintenance record created for alert: " + id);
-            } catch (Exception e) {
-                System.err.println("Failed to create maintenance record: " + e.getMessage());
+            if ("COMPLETED".equals(resolveType)) {
+                // 已维修：更新设备状态为正常，并创建维修记录
+                deviceServiceClient.updateDeviceStatus(deviceId, "NORMAL");
+
+                MaintenanceDTO maintenance = new MaintenanceDTO();
+                maintenance.setDeviceId(deviceId);
+                maintenance.setType(alert.getType() != null ? alert.getType() : "FAULT");
+                maintenance.setDescription("告警处理: " + (alert.getMessage() != null ? alert.getMessage() : "无描述"));
+                maintenance.setAlertId(id);
+                maintenance.setActionTaken(resolveNote != null ? resolveNote : "已维修");
+                maintenance.setOperatorId(operatorId);
+                maintenance.setStatus("COMPLETED");
+                maintenance.setRepairedAt(LocalDateTime.now());
+
+                try {
+                    deviceServiceClient.createMaintenance(maintenance);
+                    System.out.println("Maintenance record created for alert: " + id);
+                } catch (Exception e) {
+                    System.err.println("Failed to create maintenance record: " + e.getMessage());
+                }
+            } else if ("STOPPED".equals(resolveType)) {
+                // 停机：更新设备状态为离线
+                deviceServiceClient.updateDeviceStatus(deviceId, "OFFLINE");
             }
+            // PENDING(待维修)：只标记告警为已解决，不改变设备状态
         }
     }
 
@@ -252,19 +307,20 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
     }
 
     public String getChartBase64(Long deviceId) {
-        // 先获取最新传感器数据
-        MetricDTO metric = collectorServiceClient.getLatestMetric(deviceId.toString());
-        if (metric == null) {
+        try {
+            // 直接调用 ML 服务的趋势图接口
+            Map<String, Object> chartResponse = mlServiceClient.getTrendChart(deviceId.toString(), 20);
+            if (chartResponse != null && chartResponse.containsKey("data")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> data = (Map<String, Object>) chartResponse.get("data");
+                if (data != null && data.containsKey("image")) {
+                    return data.get("image").toString();
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            System.err.println("获取趋势图失败: " + e.getMessage());
             return null;
         }
-
-        PredictRequest request = new PredictRequest();
-        request.setDeviceId(deviceId.toString());
-        request.setTemperature(metric.getTemperature());
-        request.setVibration(metric.getVibration());
-        request.setPressure(metric.getPressure());
-
-        PredictResponse response = mlServiceClient.predict(request);
-        return response.getChartData();
     }
 }

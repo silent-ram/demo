@@ -10,7 +10,7 @@ spring:
         - id: user-service
           uri: lb://user-service
           predicates:
-            - Path=/api/user/**
+            - Path=/api/user/**,/api/auth/**
           filters:
             - StripPrefix=1
         - id: device-service
@@ -37,6 +37,16 @@ spring:
             - Path=/api/ml/**
           filters:
             - StripPrefix=2
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origin-patterns:
+              - "*"
+            allowed-methods:
+              - "*"
+            allowed-headers:
+              - "*"
+            allow-credentials: true
 
 eureka:
   client:

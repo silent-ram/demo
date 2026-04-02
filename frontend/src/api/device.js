@@ -46,6 +46,14 @@ export function updateDeviceStatus(id, status) {
   })
 }
 
+export function updateDeviceSimulation(id, enabled) {
+  return request({
+    url: `/device/${id}/simulation`,
+    method: 'put',
+    params: { enabled }
+  })
+}
+
 export function searchDevices(keyword) {
   return request({
     url: '/device/search',

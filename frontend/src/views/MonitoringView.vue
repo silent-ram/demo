@@ -130,7 +130,8 @@ function getStatusText(status) {
 onMounted(() => {
   loadDevices()
   connectWebSocket()
-  refreshTimer = setInterval(loadDevices, 30000)
+  // 每 5 秒刷新一次实时数据
+  refreshTimer = setInterval(loadDevices, 5000)
 })
 
 onUnmounted(() => {

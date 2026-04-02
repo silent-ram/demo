@@ -31,6 +31,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
                         device.getType(),
                         device.getStatus(),
                         device.getLocation(),
+                        device.getSimulationEnabled(),
                         device.getCreatedAt(),
                         device.getUpdatedAt()
                 ))
@@ -55,6 +56,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
                 device.getType(),
                 device.getStatus(),
                 device.getLocation(),
+                device.getSimulationEnabled(),
                 device.getCreatedAt(),
                 device.getUpdatedAt()
         );
@@ -67,6 +69,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
         device.setType(dto.getType());
         device.setStatus(dto.getStatus() != null ? dto.getStatus() : "NORMAL");
         device.setLocation(dto.getLocation());
+        device.setSimulationEnabled(dto.getSimulationEnabled() != null ? dto.getSimulationEnabled() : true);
         device.setCreatedAt(LocalDateTime.now());
         device.setUpdatedAt(LocalDateTime.now());
         deviceMapper.insert(device);
@@ -77,7 +80,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
         if (device == null) {
             throw new RuntimeException("设备不存在");
         }
-        
+
         if (dto.getName() != null) {
             device.setName(dto.getName());
         }
@@ -90,8 +93,11 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
         if (dto.getLocation() != null) {
             device.setLocation(dto.getLocation());
         }
+        if (dto.getSimulationEnabled() != null) {
+            device.setSimulationEnabled(dto.getSimulationEnabled());
+        }
         device.setUpdatedAt(LocalDateTime.now());
-        
+
         deviceMapper.updateById(device);
     }
 
@@ -116,7 +122,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
                 .like("type", keyword)
                 .or()
                 .like("location", keyword);
-        
+
         return deviceMapper.selectList(wrapper).stream()
                 .map(device -> new DeviceDTO(
                         device.getId(),
@@ -125,9 +131,41 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
                         device.getType(),
                         device.getStatus(),
                         device.getLocation(),
+                        device.getSimulationEnabled(),
                         device.getCreatedAt(),
                         device.getUpdatedAt()
                 ))
                 .collect(Collectors.toList());
+    }
+
+    public List<DeviceDTO> getRunningDevices() {
+        QueryWrapper<Device> wrapper = new QueryWrapper<>();
+        wrapper.eq("status", "NORMAL");
+        // 只获取模拟开启的设备
+        wrapper.eq("simulation_enabled", true);
+
+        return deviceMapper.selectList(wrapper).stream()
+                .map(device -> new DeviceDTO(
+                        device.getId(),
+                        device.getDeviceNo(),
+                        device.getName(),
+                        device.getType(),
+                        device.getStatus(),
+                        device.getLocation(),
+                        device.getSimulationEnabled(),
+                        device.getCreatedAt(),
+                        device.getUpdatedAt()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    public void updateSimulationEnabled(Long id, Boolean enabled) {
+        Device device = deviceMapper.selectById(id);
+        if (device == null) {
+            throw new RuntimeException("设备不存在");
+        }
+        device.setSimulationEnabled(enabled);
+        device.setUpdatedAt(LocalDateTime.now());
+        deviceMapper.updateById(device);
     }
 }

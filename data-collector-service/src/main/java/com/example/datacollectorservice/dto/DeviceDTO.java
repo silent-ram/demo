@@ -1,30 +1,33 @@
-package com.example.deviceservice.entity;
+package com.example.datacollectorservice.dto;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 
-@TableName("t_device")
-public class Device {
-    @TableId(type = IdType.AUTO)
+public class DeviceDTO {
     private Long id;
-
     private String deviceNo;
-
     private String name;
-
     private String type;
-
     private String status;
-
     private String location;
-
     private Boolean simulationEnabled;
-
     private LocalDateTime createdAt;
-
     private LocalDateTime updatedAt;
+
+    public DeviceDTO() {
+    }
+
+    public DeviceDTO(Long id, String deviceNo, String name, String type,
+                    String status, String location, Boolean simulationEnabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this.id = id;
+        this.deviceNo = deviceNo;
+        this.name = name;
+        this.type = type;
+        this.status = status;
+        this.location = location;
+        this.simulationEnabled = simulationEnabled;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+    }
 
     public Long getId() {
         return id;

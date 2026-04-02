@@ -15,10 +15,14 @@ export function getAlert(id) {
   })
 }
 
-export function resolveAlert(id) {
+export function resolveAlert(id, resolveNote = '', resolveType = 'COMPLETED') {
   return request({
     url: `/alert/${id}/resolve`,
-    method: 'put'
+    method: 'put',
+    params: {
+      resolveNote,
+      resolveType
+    }
   })
 }
 
