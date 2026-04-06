@@ -5,7 +5,7 @@ from flask_limiter.util import get_remote_address
 import os
 import joblib
 from train import train_model
-from predict import predict_fault
+from predict import predict_fault, FaultPredictor
 from chart import generate_trend_chart, generate_multi_device_chart
 
 app = Flask(__name__)
@@ -121,12 +121,55 @@ def predict():
                 'is_fault': fault_probability >= 0.7
             }
         })
-    
+
     except Exception as e:
         app.logger.error(f"预测失败: {str(e)}", exc_info=True)
         return jsonify({
             'success': False,
             'message': '服务器内部错误',
+            'data': None
+        }), 500
+
+@app.route('/api/predict/dynamic', methods=['POST'])
+def predict_dynamic():
+    """
+    动态传感器预测接口
+
+    请求体:
+    {
+        "device_id": "设备ID",
+        "device_type": "设备类型",
+        "sensor_data": [
+            {"timestamp": "2026-04-06T10:00:00", "sensor_code": "temperature", "value": 85},
+            ...
+        ],
+        "thresholds": {
+            "temperature": 80,
+            "vibration": 0.6
+        }
+    }
+    """
+    data = request.get_json()
+
+    try:
+        predictor = FaultPredictor()
+        probability = predictor.predict_with_config(
+            data.get('device_type'),
+            data.get('sensor_data', []),
+            data.get('thresholds', {})
+        )
+
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'faultProbability': probability
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'code': 500,
+            'message': str(e),
             'data': None
         }), 500
 
