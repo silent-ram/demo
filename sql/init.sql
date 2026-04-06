@@ -49,3 +49,8 @@ INSERT INTO t_config (config_key, value) VALUES
 ('alert_retention_days', '30');
 
 SELECT '示例数据初始化完成!' AS status;
+
+-- 扩展 t_maintenance 表
+USE fault_warning_device;
+
+ALTER TABLE t_maintenance ADD COLUMN fault_category VARCHAR(20);
