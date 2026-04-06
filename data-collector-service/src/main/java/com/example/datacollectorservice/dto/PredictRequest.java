@@ -1,5 +1,8 @@
 package com.example.datacollectorservice.dto;
 
+import java.util.List;
+import java.util.Map;
+
 public class PredictRequest {
     private String deviceId;
     private String metricName;
@@ -7,6 +10,8 @@ public class PredictRequest {
     private Double temperature;
     private Double vibration;
     private Double pressure;
+    private List<MetricDTO> sensorData;
+    private Map<String, Double> thresholds;
 
     public PredictRequest() {
     }
@@ -57,5 +62,21 @@ public class PredictRequest {
 
     public void setPressure(Double pressure) {
         this.pressure = pressure;
+    }
+
+    public List<MetricDTO> getSensorData() {
+        return sensorData;
+    }
+
+    public void setSensorData(List<MetricDTO> sensorData) {
+        this.sensorData = sensorData;
+    }
+
+    public Map<String, Double> getThresholds() {
+        return thresholds;
+    }
+
+    public void setThresholds(Map<String, Double> thresholds) {
+        this.thresholds = thresholds;
     }
 }

@@ -12,7 +12,16 @@
       </template>
       
       <el-table :data="maintenanceList" v-loading="loading" stripe>
-        <el-table-column prop="type" label="维修类型" width="120" />
+        <el-table-column prop="type" label="维修类型" width="120">
+          <template #default="{ row }">
+            <el-tag>{{ getMaintenanceTypeText(row.type) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="faultCategory" label="故障分类" width="120">
+          <template #default="{ row }">
+            <el-tag>{{ getFaultCategoryText(row.faultCategory) }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="description" label="故障描述" />
         <el-table-column prop="actionTaken" label="处理措施" />
         <el-table-column prop="status" label="状态" width="100">
@@ -43,7 +52,14 @@
           </el-select>
         </el-form-item>
         <el-form-item label="维修类型" prop="type">
-          <el-input v-model="form.type" placeholder="请输入维修类型" />
+          <el-select v-model="form.type" placeholder="请选择维修类型" style="width: 100%;">
+            <el-option v-for="mt in maintenanceTypes" :key="mt.value" :label="mt.label" :value="mt.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="故障分类" prop="faultCategory">
+          <el-select v-model="form.faultCategory" placeholder="请选择故障分类" style="width: 100%;">
+            <el-option v-for="fc in faultCategories" :key="fc.value" :label="fc.label" :value="fc.value" />
+          </el-select>
         </el-form-item>
         <el-form-item label="故障描述" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="3" placeholder="请输入故障描述" />
@@ -82,6 +98,7 @@ const pagination = reactive({
 const form = reactive({
   deviceId: null,
   type: '',
+  faultCategory: '',
   description: '',
   actionTaken: '',
   status: 'COMPLETED'
@@ -116,7 +133,7 @@ async function loadDevices() {
 }
 
 function handleAdd() {
-  Object.assign(form, { deviceId: null, type: '', description: '', actionTaken: '', status: 'COMPLETED' })
+  Object.assign(form, { deviceId: null, type: '', faultCategory: '', description: '', actionTaken: '', status: 'COMPLETED' })
   dialogVisible.value = true
 }
 
@@ -135,6 +152,46 @@ async function handleSubmit() {
   } finally {
     submitLoading.value = false
   }
+}
+
+const maintenanceTypes = [
+  { value: 'ROUTINE', label: '日常保养' },
+  { value: 'REPAIR', label: '故障维修' },
+  { value: 'EMERGENCY', label: '紧急抢修' },
+  { value: 'UPGRADE', label: '改造升级' },
+  { value: 'INSPECTION', label: '点检' }
+]
+
+const faultCategories = [
+  { value: 'EQUIPMENT', label: '设备故障' },
+  { value: 'ELECTRICAL', label: '电气故障' },
+  { value: 'MECHANICAL', label: '机械故障' },
+  { value: 'SENSOR', label: '传感器故障' },
+  { value: 'SOFTWARE', label: '软件故障' },
+  { value: 'OTHER', label: '其他' }
+]
+
+function getMaintenanceTypeText(type) {
+  const map = {
+    'ROUTINE': '日常保养',
+    'REPAIR': '故障维修',
+    'EMERGENCY': '紧急抢修',
+    'UPGRADE': '改造升级',
+    'INSPECTION': '点检'
+  }
+  return map[type] || type || '-'
+}
+
+function getFaultCategoryText(category) {
+  const map = {
+    'EQUIPMENT': '设备故障',
+    'ELECTRICAL': '电气故障',
+    'MECHANICAL': '机械故障',
+    'SENSOR': '传感器故障',
+    'SOFTWARE': '软件故障',
+    'OTHER': '其他'
+  }
+  return map[category] || category || '-'
 }
 
 function getStatusType(status) {

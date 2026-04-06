@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -179,9 +180,6 @@ public class SensorSimulator {
         String[] metricNames = {"temperature", "vibration", "pressure", "current"};
         String[] units = {"°C", "mm/s", "Pa", "A"};
 
-        // 正常范围阈值
-        Double[][] normalThresholds = {{80.0, 10.0, 800.0, 5.0}, {90.0, 15.0, 950.0, 7.0}};
-
         for (com.example.datacollectorservice.dto.DeviceDTO device : runningDevices) {
             String deviceId = device.getId().toString();
 
@@ -301,9 +299,16 @@ public class SensorSimulator {
 
                         PredictRequest request = new PredictRequest();
                         request.setDeviceId(deviceId);
-                        request.setTemperature(temperature);
-                        request.setVibration(vibration);
-                        request.setPressure(pressure);
+                        request.setSensorData(batchMetrics);
+                        // 添加阈值配置（从 SensorType 枚举获取）
+                        Map<String, Double> thresholds = new HashMap<>();
+                        for (MetricDTO metric : batchMetrics) {
+                            SensorType type = SensorType.fromCode(metric.getMetricName());
+                            if (type != null) {
+                                thresholds.put(metric.getMetricName(), type.getAlertThreshold());
+                            }
+                        }
+                        request.setThresholds(thresholds);
 
                         try {
                             PredictResponse response = mlServiceClient.predict(request);

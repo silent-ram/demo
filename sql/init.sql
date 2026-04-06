@@ -93,3 +93,8 @@ INSERT INTO t_config (`key`, value, description) VALUES
 ('alert.upgrade.critical.hours', '1', 'CRITICAL级告警升级时间(小时)');
 
 SELECT '示例数据初始化完成!' AS status;
+
+-- 扩展 t_maintenance 表
+USE fault_warning_device;
+
+ALTER TABLE t_maintenance ADD COLUMN fault_category VARCHAR(20);
