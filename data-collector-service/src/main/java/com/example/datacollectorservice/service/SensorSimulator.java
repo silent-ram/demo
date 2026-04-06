@@ -4,6 +4,7 @@ import com.example.datacollectorservice.dto.AlertDTO;
 import com.example.datacollectorservice.dto.MetricDTO;
 import com.example.datacollectorservice.dto.PredictRequest;
 import com.example.datacollectorservice.dto.PredictResponse;
+import com.example.datacollectorservice.enum.SensorType;
 import com.example.datacollectorservice.feign.AlertServiceClient;
 import com.example.datacollectorservice.feign.DeviceServiceClient;
 import com.example.datacollectorservice.feign.MlServiceClient;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -270,9 +272,16 @@ public class SensorSimulator {
 
                         PredictRequest request = new PredictRequest();
                         request.setDeviceId(deviceId);
-                        request.setTemperature(temperature);
-                        request.setVibration(vibration);
-                        request.setPressure(pressure);
+                        request.setSensorData(batchMetrics);
+                        // 添加阈值配置（从 SensorType 枚举获取）
+                        Map<String, Double> thresholds = new HashMap<>();
+                        for (MetricDTO metric : batchMetrics) {
+                            SensorType type = SensorType.fromCode(metric.getMetricName());
+                            if (type != null) {
+                                thresholds.put(metric.getMetricName(), type.getAlertThreshold());
+                            }
+                        }
+                        request.setThresholds(thresholds);
 
                         try {
                             PredictResponse response = mlServiceClient.predict(request);
