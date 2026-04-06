@@ -6,9 +6,10 @@
           <span>告警列表</span>
           <div class="filters">
             <el-select v-model="filters.level" placeholder="告警级别" clearable style="width: 120px; margin-right: 10px;">
-              <el-option label="高危" value="HIGH" />
-              <el-option label="中危" value="MEDIUM" />
-              <el-option label="低危" value="LOW" />
+              <el-option label="紧急" value="EMERGENCY" />
+              <el-option label="严重" value="CRITICAL" />
+              <el-option label="警告" value="WARNING" />
+              <el-option label="提示" value="INFO" />
             </el-select>
             <el-select v-model="filters.resolved" placeholder="状态" clearable style="width: 120px;">
               <el-option label="待处理" :value="false" />
@@ -93,6 +94,10 @@
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item v-if="currentAlert.resolved" label="处理备注">{{ currentAlert.resolveNote }}</el-descriptions-item>
+        <el-descriptions-item v-if="currentAlert.previousLevel" label="升级前级别">
+          <el-tag :type="getLevelType(currentAlert.previousLevel)">{{ getLevelText(currentAlert.previousLevel) }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="currentAlert.upgradedAt" label="升级时间">{{ currentAlert.upgradedAt }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
   </div>
@@ -179,12 +184,12 @@ function handleDetail(row) {
 }
 
 function getLevelType(level) {
-  const map = { 'HIGH': 'danger', 'MEDIUM': 'warning', 'LOW': 'info' }
+  const map = { 'EMERGENCY': 'danger', 'CRITICAL': 'danger', 'WARNING': 'warning', 'INFO': 'info' }
   return map[level] || 'info'
 }
 
 function getLevelText(level) {
-  const map = { 'HIGH': '高危', 'MEDIUM': '中危', 'LOW': '低危' }
+  const map = { 'EMERGENCY': '紧急', 'CRITICAL': '严重', 'WARNING': '警告', 'INFO': '提示' }
   return map[level] || level
 }
 
