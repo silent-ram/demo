@@ -30,7 +30,11 @@ public class Alert {
     private Long resolvedBy;
     
     private String resolveNote;
-    
+
+    private String previousLevel;
+
+    private LocalDateTime upgradedAt;
+
     private LocalDateTime createdAt;
     
     private LocalDateTime updatedAt;
@@ -121,6 +125,22 @@ public class Alert {
 
     public void setResolveNote(String resolveNote) {
         this.resolveNote = resolveNote;
+    }
+
+    public String getPreviousLevel() {
+        return previousLevel;
+    }
+
+    public void setPreviousLevel(String previousLevel) {
+        this.previousLevel = previousLevel;
+    }
+
+    public LocalDateTime getUpgradedAt() {
+        return upgradedAt;
+    }
+
+    public void setUpgradedAt(LocalDateTime upgradedAt) {
+        this.upgradedAt = upgradedAt;
     }
 
     public LocalDateTime getCreatedAt() {
