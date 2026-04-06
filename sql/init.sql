@@ -43,9 +43,53 @@ FROM fault_warning_device.t_device d WHERE d.device_no = 'DEV006';
 -- 删除配置
 DELETE FROM t_config;
 -- 插入初始配置
-INSERT INTO t_config (config_key, value) VALUES
+INSERT INTO t_config (`key`, value) VALUES
 ('fault_threshold', '0.7'),
 ('check_interval', '10000'),
 ('alert_retention_days', '30');
+
+-- ============================================================
+-- 传感器配置表 (Task 10)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS t_sensor_config (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    device_type VARCHAR(50) NOT NULL,
+    sensor_code VARCHAR(50) NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    alert_threshold DOUBLE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_device_sensor (device_type, sensor_code)
+);
+
+-- 插入传感器配置示例数据
+INSERT INTO t_sensor_config (device_type, sensor_code, enabled, alert_threshold) VALUES
+('工业机器人', 'temperature', TRUE, 80),
+('工业机器人', 'vibration', TRUE, 0.6),
+('工业机器人', 'pressure', TRUE, 130),
+('工业机器人', 'current', TRUE, 7),
+('数控机床', 'temperature', TRUE, 80),
+('数控机床', 'vibration', TRUE, 0.6),
+('数控机床', 'current', TRUE, 7),
+('输送设备', 'temperature', TRUE, 60),
+('输送设备', 'vibration', TRUE, 0.5),
+('焊接设备', 'temperature', TRUE, 100),
+('焊接设备', 'current', TRUE, 8),
+('压力设备', 'temperature', TRUE, 90),
+('压力设备', 'pressure', TRUE, 150),
+('包装设备', 'temperature', TRUE, 50),
+('包装设备', 'current', TRUE, 5);
+
+-- ============================================================
+-- 扩展 t_alert 表 (Task 10)
+-- ============================================================
+ALTER TABLE t_alert ADD COLUMN previous_level VARCHAR(20);
+ALTER TABLE t_alert ADD COLUMN upgraded_at DATETIME;
+
+-- 添加告警升级配置
+INSERT INTO t_config (`key`, value, description) VALUES
+('alert.upgrade.info.hours', '24', 'INFO级告警升级时间(小时)'),
+('alert.upgrade.warning.hours', '4', 'WARNING级告警升级时间(小时)'),
+('alert.upgrade.critical.hours', '1', 'CRITICAL级告警升级时间(小时)');
 
 SELECT '示例数据初始化完成!' AS status;

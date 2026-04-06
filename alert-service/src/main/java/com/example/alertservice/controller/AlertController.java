@@ -2,14 +2,18 @@ package com.example.alertservice.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.alertservice.dto.AlertDTO;
+import com.example.alertservice.dto.AlertStatisticsDTO;
+import com.example.alertservice.dto.FailureRankDTO;
 import com.example.alertservice.entity.Alert;
 import com.example.alertservice.service.AlertService;
 import com.example.alertservice.exception.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -131,5 +135,24 @@ public class AlertController {
     public Result<String> pushAlert(@RequestBody AlertDTO alertDTO) {
         alertService.receiveAlert(alertDTO);
         return Result.success("告警推送成功", null);
+    }
+
+    @GetMapping("/statistics/frequency")
+    @Operation(summary = "告警频次统计", description = "获取指定日期范围内的告警频次统计")
+    public Result<AlertStatisticsDTO> getFrequencyStatistics(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+        AlertStatisticsDTO statistics = alertService.getFrequencyStatistics(startDate, endDate);
+        return Result.success(statistics);
+    }
+
+    @GetMapping("/statistics/failure-rank")
+    @Operation(summary = "设备故障率排行", description = "获取指定日期范围内设备故障率排行")
+    public Result<List<FailureRankDTO>> getFailureRank(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @RequestParam(defaultValue = "10") Integer limit) {
+        List<FailureRankDTO> rankList = alertService.getFailureRank(startDate, endDate, limit);
+        return Result.success(rankList);
     }
 }

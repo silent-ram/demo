@@ -23,8 +23,8 @@
         </el-table-column>
         <el-table-column label="操作" width="250">
           <template #default="{ row }">
-            <el-button v-if="row.status === 'OFFLINE'" type="success" link @click="handleStart(row)">启动</el-button>
-            <el-button v-else-if="row.status === 'NORMAL'" type="warning" link @click="handleStop(row)">停机</el-button>
+            <el-button v-if="row.status === 'OFFLINE' || row.status === 'STANDBY'" type="success" link @click="handleStart(row)">启动</el-button>
+            <el-button v-else-if="row.status === 'NORMAL' || row.status === 'RUNNING'" type="warning" link @click="handleStop(row)">停机</el-button>
             <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
             <el-button v-if="userStore.role === 'ADMIN'" type="primary" link @click="handleEdit(row)">编辑</el-button>
             <el-button v-if="userStore.role === 'ADMIN'" type="danger" link @click="handleDelete(row)">删除</el-button>
@@ -145,7 +145,7 @@ async function handleDelete(row) {
 
 async function handleStart(row) {
   try {
-    await updateDeviceStatus(row.id, 'NORMAL')
+    await updateDeviceStatus(row.id, 'RUNNING')
     // 设备启动时自动开启模拟
     await updateDeviceSimulation(row.id, true)
     ElMessage.success('设备已启动')
@@ -190,12 +190,26 @@ async function handleSubmit() {
 }
 
 function getStatusType(status) {
-  const map = { 'NORMAL': 'success', 'WARNING': 'warning', 'FAULT': 'danger', 'OFFLINE': 'info' }
+  const map = {
+    'NORMAL': 'success',
+    'RUNNING': 'primary',
+    'STANDBY': 'info',
+    'MAINTENANCE': 'warning',
+    'FAULT': 'danger',
+    'OFFLINE': 'info'
+  }
   return map[status] || 'info'
 }
 
 function getStatusText(status) {
-  const map = { 'NORMAL': '正常', 'WARNING': '预警', 'FAULT': '故障', 'OFFLINE': '离线' }
+  const map = {
+    'NORMAL': '正常运行',
+    'RUNNING': '运行中',
+    'STANDBY': '待机',
+    'MAINTENANCE': '维护中',
+    'FAULT': '故障',
+    'OFFLINE': '离线'
+  }
   return map[status] || status
 }
 

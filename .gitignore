@@ -81,3 +81,7 @@ playwright.config.js
 *.tmp
 *.temp
 .trae/
+
+# Worktrees
+.worktrees/
+worktrees/
