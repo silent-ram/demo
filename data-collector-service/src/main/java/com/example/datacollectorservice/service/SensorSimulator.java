@@ -4,15 +4,19 @@ import com.example.datacollectorservice.dto.AlertDTO;
 import com.example.datacollectorservice.dto.MetricDTO;
 import com.example.datacollectorservice.dto.PredictRequest;
 import com.example.datacollectorservice.dto.PredictResponse;
+import com.example.datacollectorservice.enum.SensorType;
+import com.example.datacollectorservice.entity.SensorConfig;
 import com.example.datacollectorservice.feign.AlertServiceClient;
 import com.example.datacollectorservice.feign.DeviceServiceClient;
 import com.example.datacollectorservice.feign.MlServiceClient;
+import com.example.datacollectorservice.mapper.SensorConfigMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -53,6 +57,9 @@ public class SensorSimulator {
 
     @Autowired
     private DeviceServiceClient deviceServiceClient;
+
+    @Autowired
+    private SensorConfigMapper sensorConfigMapper;
 
     // 全局模拟开关（兼容旧接口）
     private final AtomicBoolean globalRunning = new AtomicBoolean(true);
@@ -168,7 +175,7 @@ public class SensorSimulator {
             return;
         }
 
-        // 指标名称和单位
+        // 默认指标名称
         String[] metricNames = {"temperature", "vibration", "pressure", "current"};
         String[] units = {"°C", "mm/s", "Pa", "A"};
 
@@ -202,11 +209,27 @@ public class SensorSimulator {
             // 获取随机范围
             Map<String, double[]> rangeValues = randomRanges.get(deviceId);
 
+            // 获取设备类型对应的传感器配置
+            String deviceType = device.getType();
+            List<SensorConfig> sensorConfigs = sensorConfigMapper.findEnabledByDeviceType(deviceType);
+            if (sensorConfigs == null || sensorConfigs.isEmpty()) {
+                // 如果没有配置，使用默认传感器
+                sensorConfigs = getDefaultSensorConfigs();
+            }
+
+            // 构建传感器代码到索引的映射（用于阈值数组索引）
+            Map<String, Integer> sensorIndexMap = new ConcurrentHashMap<>();
+            for (int i = 0; i < metricNames.length; i++) {
+                sensorIndexMap.put(metricNames[i], i);
+            }
+
             List<MetricDTO> batchMetrics = new ArrayList<>();
 
-            for (int i = 0; i < metricNames.length; i++) {
-                String metricName = metricNames[i];
-                String unit = units[i];
+            for (SensorConfig config : sensorConfigs) {
+                String metricName = config.getSensorCode();
+                Double threshold = config.getAlertThreshold();
+                Integer index = sensorIndexMap.get(metricName);
+                String unit = (index != null && index < units.length) ? units[index] : "";
                 Double value = null;
 
                 // 根据模式生成数据
@@ -221,20 +244,28 @@ public class SensorSimulator {
                     // 手动设置持续输出
                     value = manualDeviceValues.get(metricName);
                 } else if ("NORMAL".equals(mode)) {
-                    // 正常范围输出
+                    // 正常范围输出，使用配置表阈值或默认阈值
+                    double alertThreshold = threshold != null ? threshold : getDefaultThreshold(metricName);
+                    double normalMax = alertThreshold;
+                    double faultMax = alertThreshold + 10;
                     boolean isFault = random.nextDouble() < 0.1;
                     if (isFault) {
-                        value = normalThresholds[1][i] + random.nextDouble() * 5;
+                        value = faultMax + random.nextDouble() * 5;
                     } else {
-                        value = normalThresholds[0][i] - random.nextDouble() * 10;
+                        value = normalMax - random.nextDouble() * 10;
+                        if (value < 0) value = 0.0;
                     }
                 } else {
                     // 默认正常输出
+                    double alertThreshold = threshold != null ? threshold : getDefaultThreshold(metricName);
+                    double normalMax = alertThreshold;
+                    double faultMax = alertThreshold + 10;
                     boolean isFault = random.nextDouble() < 0.1;
                     if (isFault) {
-                        value = normalThresholds[1][i] + random.nextDouble() * 5;
+                        value = faultMax + random.nextDouble() * 5;
                     } else {
-                        value = normalThresholds[0][i] - random.nextDouble() * 10;
+                        value = normalMax - random.nextDouble() * 10;
+                        if (value < 0) value = 0.0;
                     }
                 }
 
@@ -315,5 +346,28 @@ public class SensorSimulator {
         Map<String, Boolean> statuses = new ConcurrentHashMap<>();
         deviceStatuses.forEach((id, status) -> statuses.put(id, status.get()));
         return statuses;
+    }
+
+    /**
+     * 获取默认传感器配置列表
+     */
+    private List<SensorConfig> getDefaultSensorConfigs() {
+        List<SensorConfig> configs = new ArrayList<>();
+        for (String code : Arrays.asList("temperature", "vibration", "pressure", "current")) {
+            SensorConfig config = new SensorConfig();
+            config.setSensorCode(code);
+            config.setEnabled(true);
+            config.setAlertThreshold(getDefaultThreshold(code));
+            configs.add(config);
+        }
+        return configs;
+    }
+
+    /**
+     * 获取默认告警阈值
+     */
+    private double getDefaultThreshold(String sensorCode) {
+        SensorType type = SensorType.fromCode(sensorCode);
+        return type != null ? type.getAlertThreshold() : 0;
     }
 }
