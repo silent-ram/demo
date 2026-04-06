@@ -29,6 +29,11 @@
           <span>告警管理</span>
           <el-badge v-if="alertStore.unreadCount > 0" :value="alertStore.unreadCount" class="menu-badge" />
         </el-menu-item>
+        <el-menu-item index="/messages">
+          <el-icon><Message /></el-icon>
+          <span>消息中心</span>
+          <el-badge v-if="messageStore.unreadCount > 0" :value="messageStore.unreadCount" class="menu-badge" />
+        </el-menu-item>
         <el-menu-item index="/maintenance">
           <el-icon><Tools /></el-icon>
           <span>维修记录</span>
@@ -83,11 +88,13 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useAlertStore } from '@/stores/alert'
+import { useMessageStore } from '@/stores/message'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const alertStore = useAlertStore()
+const messageStore = useMessageStore()
 
 const activeMenu = computed(() => route.path)
 const currentTitle = computed(() => route.meta.title || '')

@@ -49,7 +49,7 @@ INSERT INTO t_config (`key`, value) VALUES
 ('alert_retention_days', '30');
 
 -- ============================================================
--- 传感器配置表 (Task 10)
+-- 传感器配置表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS t_sensor_config (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -81,7 +81,7 @@ INSERT INTO t_sensor_config (device_type, sensor_code, enabled, alert_threshold)
 ('包装设备', 'current', TRUE, 5);
 
 -- ============================================================
--- 扩展 t_alert 表 (Task 10)
+-- 扩展 t_alert 表
 -- ============================================================
 ALTER TABLE t_alert ADD COLUMN previous_level VARCHAR(20);
 ALTER TABLE t_alert ADD COLUMN upgraded_at DATETIME;
@@ -92,9 +92,60 @@ INSERT INTO t_config (`key`, value, description) VALUES
 ('alert.upgrade.warning.hours', '4', 'WARNING级告警升级时间(小时)'),
 ('alert.upgrade.critical.hours', '1', 'CRITICAL级告警升级时间(小时)');
 
-SELECT '示例数据初始化完成!' AS status;
-
+-- ============================================================
 -- 扩展 t_maintenance 表
+-- ============================================================
 USE fault_warning_device;
 
 ALTER TABLE t_maintenance ADD COLUMN fault_category VARCHAR(20);
+
+-- ============================================================
+-- 操作日志表
+-- ============================================================
+USE fault_warning_user;
+
+CREATE TABLE IF NOT EXISTS t_operation_log (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    username VARCHAR(50),
+    operation_type VARCHAR(20) NOT NULL,
+    operation_content VARCHAR(500),
+    device_id BIGINT,
+    ip_address VARCHAR(50),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user (user_id),
+    INDEX idx_type (operation_type),
+    INDEX idx_created (created_at)
+);
+
+-- ============================================================
+-- 消息表
+-- ============================================================
+USE fault_warning_alert;
+
+CREATE TABLE IF NOT EXISTS t_message (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    type VARCHAR(20) NOT NULL,
+    title VARCHAR(100) NOT NULL,
+    content VARCHAR(500),
+    related_id BIGINT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user (user_id),
+    INDEX idx_is_read (is_read)
+);
+
+-- ============================================================
+-- 通知配置表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS t_notification_config (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    alert_level VARCHAR(20) NOT NULL,
+    enable_push BOOLEAN DEFAULT TRUE,
+    enable_message BOOLEAN DEFAULT TRUE,
+    UNIQUE KEY uk_user_level (user_id, alert_level)
+);
+
+SELECT '示例数据初始化完成!' AS status;

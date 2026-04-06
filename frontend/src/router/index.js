@@ -45,6 +45,12 @@ const routes = [
         meta: { title: '告警管理' }
       },
       {
+        path: 'messages',
+        name: 'Messages',
+        component: () => import('@/views/MessageCenterView.vue'),
+        meta: { title: '消息中心' }
+      },
+      {
         path: 'maintenance',
         name: 'Maintenance',
         component: () => import('@/views/MaintenanceView.vue'),
