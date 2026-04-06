@@ -41,14 +41,48 @@ class FaultPredictor:
     def predict_batch(self, data_list):
         if self.model is None:
             return None
-        
+
         features = np.array([[d['temperature'], d['vibration'], d['pressure']] for d in data_list])
-        
+
         if self.scaler is not None:
             features = self.scaler.transform(features)
-        
+
         probas = self.model.predict_proba(features)[:, 1]
         return [float(p) for p in probas]
+
+    def predict_with_config(self, device_type: str, sensor_data: list, thresholds: dict):
+        """
+        使用动态配置的传感器进行预测
+
+        Args:
+            device_type: 设备类型
+            sensor_data: 传感器数据列表
+            thresholds: 各传感器的告警阈值
+
+        Returns:
+            故障概率
+        """
+        if self.model is None:
+            return None
+
+        # 导入特征提取器
+        from feature_extractor import FeatureExtractor
+        extractor = FeatureExtractor()
+
+        # 提取时序特征
+        features = extractor.extract_features(sensor_data, thresholds)
+
+        if not features:
+            return None
+
+        # 转换为模型输入格式
+        features_array = np.array([features])
+
+        if self.scaler is not None:
+            features_array = self.scaler.transform(features_array)
+
+        proba = self.model.predict_proba(features_array)[0][1]
+        return float(proba)
 
 predictor = FaultPredictor()
 
