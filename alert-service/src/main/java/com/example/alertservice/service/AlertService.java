@@ -3,7 +3,8 @@ package com.example.alertservice.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.example.alertservice.dto.AlertDTO;
+import com.example.alertservice.dto.AlertStatisticsDTO;
+import com.example.alertservice.dto.FailureRankDTO;
 import com.example.alertservice.dto.MaintenanceDTO;
 import com.example.alertservice.dto.MetricDTO;
 import com.example.alertservice.dto.PredictRequest;
@@ -22,6 +23,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -322,5 +325,31 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
             System.err.println("获取趋势图失败: " + e.getMessage());
             return null;
         }
+    }
+
+    public AlertStatisticsDTO getFrequencyStatistics(LocalDateTime startDate, LocalDateTime endDate) {
+        Long total = alertMapper.countByDateRange(startDate, endDate);
+
+        Map<String, Long> byLevel = new LinkedHashMap<>();
+        List<AlertMapper.AlertLevelCount> levelCounts = alertMapper.countByLevelAndDateRange(startDate, endDate);
+        for (AlertMapper.AlertLevelCount item : levelCounts) {
+            byLevel.put(item.getAlertLevel(), item.getCount());
+        }
+
+        Map<String, Long> byDevice = new LinkedHashMap<>();
+        List<AlertMapper.AlertDeviceCount> deviceCounts = alertMapper.countByDeviceAndDateRange(startDate, endDate);
+        for (AlertMapper.AlertDeviceCount item : deviceCounts) {
+            String key = item.getDeviceName() != null ? item.getDeviceName() : "设备" + item.getDeviceId();
+            byDevice.put(key, item.getCount());
+        }
+
+        return new AlertStatisticsDTO(total, byLevel, byDevice);
+    }
+
+    public List<FailureRankDTO> getFailureRank(LocalDateTime startDate, LocalDateTime endDate, Integer limit) {
+        if (limit == null || limit <= 0) {
+            limit = 10;
+        }
+        return alertMapper.findFailureRank(startDate, endDate, limit);
     }
 }
