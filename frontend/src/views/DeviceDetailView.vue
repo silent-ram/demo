@@ -1,5 +1,8 @@
 <template>
   <div class="device-detail">
+    <div class="page-header">
+      <el-button @click="goBack" icon="ArrowLeft">返回</el-button>
+    </div>
     <el-row :gutter="20">
       <el-col :span="8">
         <el-card shadow="hover">
@@ -14,6 +17,14 @@
             <el-descriptions-item label="状态">
               <el-tag :type="getStatusType(device.status)">{{ getStatusText(device.status) }}</el-tag>
             </el-descriptions-item>
+            <el-descriptions-item label="故障概率">
+              <el-progress :percentage="(device.faultProbability * 100 || 0)" :color="getFaultProbColor(device.faultProbability)" style="width: 150px;" />
+              <span style="margin-left: 10px;">{{ ((device.faultProbability || 0) * 100).toFixed(1) }}%</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="操作">
+              <el-button v-if="device.status === 'OFFLINE' || device.status === 'STANDBY'" type="success" size="small" @click="handleStart">启动</el-button>
+              <el-button v-else-if="device.status === 'NORMAL' || device.status === 'RUNNING'" type="warning" size="small" @click="handleStop">停机</el-button>
+            </el-descriptions-item>
           </el-descriptions>
         </el-card>
       </el-col>
@@ -22,7 +33,7 @@
           <template #header>
             <span>实时传感器数据</span>
           </template>
-          <div ref="chartRef" style="height: 300px;"></div>
+          <div ref="chartRef" style="height: 450px;"></div>
         </el-card>
       </el-col>
     </el-row>
@@ -44,18 +55,11 @@
               <el-radio-button value="RANDOM">随机范围</el-radio-button>
             </el-radio-group>
 
-            <!-- 正常输出模式：显示当前值 -->
+            <!-- 正常输出模式 -->
             <div v-if="simMode === 'NORMAL'">
               <el-alert type="info" :closable="false" show-icon>
                 正常模式：在正常指标范围内自动随机生成数据
               </el-alert>
-              <el-form label-width="80px" style="margin-top: 15px;">
-                <el-form-item label="当前值">
-                  <span>温度: {{ currentValues.temperature?.toFixed(1) || '--' }}°C</span>
-                  <span style="margin-left: 20px;">振动: {{ currentValues.vibration?.toFixed(2) || '--' }}mm/s</span>
-                  <span style="margin-left: 20px;">压力: {{ currentValues.pressure?.toFixed(0) || '--' }}Pa</span>
-                </el-form-item>
-              </el-form>
             </div>
 
             <!-- 插入数据模式 -->
@@ -115,21 +119,23 @@
           <template #header>
             <span>维修记录</span>
           </template>
-          <el-timeline v-if="maintenanceList.length > 0">
-            <el-timeline-item
-              v-for="item in maintenanceList"
-              :key="item.id"
-              :timestamp="item.repairedAt"
-              placement="top"
-            >
-              <el-card>
-                <h4>{{ item.type }}</h4>
-                <p>{{ item.description }}</p>
-                <p>处理措施：{{ item.actionTaken }}</p>
-              </el-card>
-            </el-timeline-item>
-          </el-timeline>
-          <el-empty v-else description="暂无维修记录" />
+          <div style="max-height: 300px; overflow-y: auto;">
+            <el-timeline v-if="maintenanceList.length > 0">
+              <el-timeline-item
+                v-for="item in maintenanceList"
+                :key="item.id"
+                :timestamp="item.repairedAt"
+                placement="top"
+              >
+                <el-card>
+                  <h4>{{ item.type }}</h4>
+                  <p>{{ item.description }}</p>
+                  <p>处理措施：{{ item.actionTaken }}</p>
+                </el-card>
+              </el-timeline-item>
+            </el-timeline>
+            <el-empty v-else description="暂无维修记录" />
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -139,6 +145,7 @@
         <el-card shadow="hover">
           <template #header>
             <span>多维趋势图</span>
+            <el-button type="primary" size="small" @click="loadTrendChart" :loading="trendLoading">刷新</el-button>
           </template>
           <div v-if="trendImage" class="trend-image">
             <img :src="'data:image/png;base64,' + trendImage" alt="趋势图" />
@@ -152,15 +159,17 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { getDevice, updateDeviceSimulation } from '@/api/device'
+
+const route = useRoute()
+const router = useRouter()
+import { getDevice, updateDeviceSimulation, updateDeviceStatus } from '@/api/device'
 import { getMaintenanceList } from '@/api/device'
 import { getMetrics, getLatestMetric, setDeviceMode, insertDeviceData, setDeviceRandomRange, getDeviceMode, clearDeviceManualData } from '@/api/collector'
 import { getChart } from '@/api/alert'
 import { ElMessage } from 'element-plus'
 
-const route = useRoute()
 const chartRef = ref(null)
 let chart = null
 let refreshTimer = null
@@ -168,10 +177,11 @@ let refreshTimer = null
 const device = ref({})
 const maintenanceList = ref([])
 const trendImage = ref('')
+const trendLoading = ref(false)
 const metricsData = ref([])
 
 // 模拟控制相关
-const simulationEnabled = ref(false)
+const simulationEnabled = ref(false)  // 默认关闭
 const simMode = ref('NORMAL')  // NORMAL, INSERT, RANDOM
 
 // 插入数据模式的变量
@@ -191,6 +201,8 @@ async function loadDevice() {
   try {
     const res = await getDevice(route.params.id)
     device.value = res.data || {}
+    // 同步更新模拟开关状态
+    simulationEnabled.value = device.value.simulationEnabled || false
   } catch (error) {
     console.error('加载设备信息失败:', error)
   }
@@ -207,10 +219,13 @@ async function loadMaintenance() {
 
 async function loadTrendChart() {
   try {
+    trendLoading.value = true
     const res = await getChart(route.params.id)
     trendImage.value = res.data || ''
   } catch (error) {
     console.error('加载趋势图失败:', error)
+  } finally {
+    trendLoading.value = false
   }
 }
 
@@ -226,12 +241,12 @@ async function loadMetrics() {
 
 async function loadSimulationStatus() {
   try {
-    // 从设备详情中获取 simulationEnabled 状态
-    if (device.value.simulationEnabled !== undefined) {
-      simulationEnabled.value = device.value.simulationEnabled
+    // 直接从API获取设备信息，确保拿到最新状态
+    const deviceRes = await getDevice(route.params.id)
+    if (deviceRes.data) {
+      simulationEnabled.value = deviceRes.data.simulationEnabled || false
     } else {
-      // 兼容旧数据，默认开启
-      simulationEnabled.value = true
+      simulationEnabled.value = false
     }
 
     // 获取设备当前模式
@@ -241,7 +256,6 @@ async function loadSimulationStatus() {
         simMode.value = modeRes.data.mode
       }
     } catch (e) {
-      // 兼容旧数据
       simMode.value = 'NORMAL'
     }
   } catch (error) {
@@ -325,6 +339,10 @@ async function loadCurrentValues() {
         vibration: res.data.vibration,
         pressure: res.data.pressure
       }
+      // 更新设备的故障概率
+      if (res.data.faultProbability !== undefined && res.data.faultProbability !== null) {
+        device.value.faultProbability = res.data.faultProbability
+      }
     }
   } catch (error) {
     console.error('加载当前值失败:', error)
@@ -334,18 +352,42 @@ async function loadCurrentValues() {
 function initChart() {
   chart = echarts.init(chartRef.value)
   const option = {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['温度', '振动', '压力'] },
-    xAxis: { type: 'category', data: [] },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'line',
+        lineStyle: { type: 'dashed', color: '#666', width: 1 }
+      },
+      formatter(params) {
+        let result = params[0].name + '<br/>'
+        params.forEach(p => {
+          const colors = ['#5470C6', '#91CC75', '#EE6666']
+          const units = ['°C', 'mm/s', 'bar']
+          result += `<span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:${colors[p.seriesIndex]};"></span>${p.seriesName}: ${p.value}${units[p.seriesIndex]}<br/>`
+        })
+        return result
+      }
+    },
+    legend: { data: ['温度(°C)', '振动(mm/s)', '压力(bar)'], top: 0 },
+    grid: [
+      { left: 70, right: 20, top: 50, height: 110 },
+      { left: 70, right: 20, top: 175, height: 110 },
+      { left: 70, right: 20, top: 300, height: 110 }
+    ],
+    xAxis: [
+      { type: 'category', data: [], gridIndex: 0, boundaryGap: false, axisLine: { show: true } },
+      { type: 'category', data: [], gridIndex: 1, boundaryGap: false, axisLine: { show: true } },
+      { type: 'category', data: [], gridIndex: 2, boundaryGap: false, axisLine: { show: true } }
+    ],
     yAxis: [
-      { type: 'value', name: '温度(°C)' },
-      { type: 'value', name: '振动(mm/s)' },
-      { type: 'value', name: '压力(MPa)' }
+      { type: 'value', name: '温度(°C)', nameLocation: 'middle', nameGap: 40, nameTextStyle: { fontSize: 11 }, gridIndex: 0 },
+      { type: 'value', name: '振动(mm/s)', nameLocation: 'middle', nameGap: 40, nameTextStyle: { fontSize: 11 }, gridIndex: 1 },
+      { type: 'value', name: '压力(bar)', nameLocation: 'middle', nameGap: 40, nameTextStyle: { fontSize: 11 }, gridIndex: 2 }
     ],
     series: [
-      { name: '温度', type: 'line', smooth: true, data: [] },
-      { name: '振动', type: 'line', smooth: true, yAxisIndex: 1, data: [] },
-      { name: '压力', type: 'line', smooth: true, yAxisIndex: 2, data: [] }
+      { name: '温度(°C)', type: 'line', smooth: true, xAxisIndex: 0, yAxisIndex: 0, data: [], showSymbol: false },
+      { name: '振动(mm/s)', type: 'line', smooth: true, xAxisIndex: 1, yAxisIndex: 1, data: [], showSymbol: false },
+      { name: '压力(bar)', type: 'line', smooth: true, xAxisIndex: 2, yAxisIndex: 2, data: [], showSymbol: false }
     ]
   }
   chart.setOption(option)
@@ -353,7 +395,7 @@ function initChart() {
 
 function updateChart() {
   if (!chart || metricsData.value.length === 0) return
-  
+
   const times = metricsData.value.slice(-20).map(m => {
     const date = new Date(m.timestamp)
     return `${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`
@@ -361,9 +403,13 @@ function updateChart() {
   const temperatures = metricsData.value.slice(-20).map(m => m.temperature)
   const vibrations = metricsData.value.slice(-20).map(m => m.vibration)
   const pressures = metricsData.value.slice(-20).map(m => m.pressure)
-  
+
   chart.setOption({
-    xAxis: { data: times },
+    xAxis: [
+      { data: times },
+      { data: times },
+      { data: times }
+    ],
     series: [
       { data: temperatures },
       { data: vibrations },
@@ -373,13 +419,47 @@ function updateChart() {
 }
 
 function getStatusType(status) {
-  const map = { 'NORMAL': 'success', 'WARNING': 'warning', 'FAULT': 'danger', 'OFFLINE': 'info' }
+  const map = { 'NORMAL': 'success', 'RUNNING': 'primary', 'STANDBY': 'info', 'MAINTENANCE': 'warning', 'FAULT': 'danger', 'OFFLINE': 'info' }
   return map[status] || 'info'
 }
 
 function getStatusText(status) {
-  const map = { 'NORMAL': '正常', 'WARNING': '预警', 'FAULT': '故障', 'OFFLINE': '离线' }
+  const map = { 'NORMAL': '运行中', 'RUNNING': '运行中', 'STANDBY': '待机', 'MAINTENANCE': '维护中', 'FAULT': '故障', 'OFFLINE': '离线' }
   return map[status] || status
+}
+
+function getFaultProbColor(prob) {
+  if (prob >= 0.7) return '#F56C6C'
+  if (prob >= 0.5) return '#E6A23C'
+  return '#67C23A'
+}
+
+async function handleStart() {
+  try {
+    await updateDeviceStatus(device.value.id, 'RUNNING')
+    await updateDeviceSimulation(device.value.id, true)
+    ElMessage.success('设备已启动')
+    await loadDevice()
+  } catch (error) {
+    console.error('启动失败:', error)
+    ElMessage.error('启动失败: ' + error.message)
+  }
+}
+
+async function handleStop() {
+  try {
+    await updateDeviceStatus(device.value.id, 'OFFLINE')
+    await updateDeviceSimulation(device.value.id, false)
+    ElMessage.success('设备已停机')
+    await loadDevice()
+  } catch (error) {
+    console.error('停机失败:', error)
+    ElMessage.error('停机失败: ' + error.message)
+  }
+}
+
+function goBack() {
+  router.back()
 }
 
 onMounted(() => {
@@ -407,6 +487,10 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.page-header {
+  margin-bottom: 20px;
+}
+
 .trend-image {
   text-align: center;
 }

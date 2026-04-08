@@ -69,7 +69,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
         device.setType(dto.getType());
         device.setStatus(dto.getStatus() != null ? dto.getStatus() : "NORMAL");
         device.setLocation(dto.getLocation());
-        device.setSimulationEnabled(dto.getSimulationEnabled() != null ? dto.getSimulationEnabled() : true);
+        device.setSimulationEnabled(false);  // 默认关闭模拟
         device.setCreatedAt(LocalDateTime.now());
         device.setUpdatedAt(LocalDateTime.now());
         deviceMapper.insert(device);
@@ -140,7 +140,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
 
     public List<DeviceDTO> getRunningDevices() {
         QueryWrapper<Device> wrapper = new QueryWrapper<>();
-        wrapper.eq("status", "NORMAL");
+        wrapper.in("status", "NORMAL", "RUNNING");
         // 只获取模拟开启的设备
         wrapper.eq("simulation_enabled", true);
 

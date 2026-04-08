@@ -4,6 +4,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import os
 import joblib
+import requests
 from train import train_model
 from predict import predict_fault, FaultPredictor
 from chart import generate_trend_chart, generate_multi_device_chart
@@ -178,9 +179,39 @@ def chart_trend():
     try:
         device_id = request.args.get('deviceId', 1, type=int)
         data_points = request.args.get('points', 100, type=int)
-        
-        img_base64 = generate_trend_chart(device_id, data_points)
-        
+
+        # 从 data-collector-service 获取真实数据
+        data = None
+        try:
+            collector_url = os.getenv('COLLECTOR_SERVICE_URL', 'http://localhost:8083')
+            resp = requests.get(f'{collector_url}/collector/metrics/{device_id}', timeout=5)
+            if resp.status_code == 200:
+                result = resp.json()
+                if result.get('code') == 200 and result.get('data'):
+                    metrics = result['data']
+                    # 提取温度、振动、压力数据
+                    timestamps = []
+                    temperature = []
+                    vibration = []
+                    pressure = []
+                    for m in metrics:
+                        ts = m.get('timestamp', '')
+                        timestamps.append(ts.split('T')[1][:8] if 'T' in ts else ts)
+                        temperature.append(m.get('temperature', 0))
+                        vibration.append(m.get('vibration', 0))
+                        pressure.append(m.get('pressure', 0))
+                    if temperature:
+                        data = {
+                            'temperature': temperature[-data_points:],
+                            'vibration': vibration[-data_points:],
+                            'pressure': pressure[-data_points:],
+                            'timestamps': timestamps[-data_points:]
+                        }
+        except Exception as e:
+            print(f'获取传感器数据失败: {e}')
+
+        img_base64 = generate_trend_chart(device_id, data_points, data=data)
+
         return jsonify({
             'success': True,
             'message': '图表生成成功',
@@ -189,7 +220,7 @@ def chart_trend():
                 'format': 'png'
             }
         })
-    
+
     except Exception as e:
         return jsonify({
             'success': False,

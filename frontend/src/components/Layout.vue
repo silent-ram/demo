@@ -42,9 +42,21 @@
           <el-icon><TrendCharts /></el-icon>
           <span>模型管理</span>
         </el-menu-item>
+        <el-menu-item index="/alert-statistics">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>告警统计</span>
+        </el-menu-item>
+        <el-menu-item v-if="userStore.role === 'ADMIN'" index="/sensor-config">
+          <el-icon><Setting /></el-icon>
+          <span>传感器配置</span>
+        </el-menu-item>
         <el-menu-item v-if="userStore.role === 'ADMIN'" index="/users">
           <el-icon><User /></el-icon>
           <span>用户管理</span>
+        </el-menu-item>
+        <el-menu-item v-if="userStore.role === 'ADMIN'" index="/operation-log">
+          <el-icon><Document /></el-icon>
+          <span>操作日志</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -84,11 +96,12 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useAlertStore } from '@/stores/alert'
 import { useMessageStore } from '@/stores/message'
+import { getMessageList } from '@/api/message'
 
 const route = useRoute()
 const router = useRouter()
@@ -103,6 +116,20 @@ function handleLogout() {
   userStore.logout()
   router.push('/login')
 }
+
+async function loadUnreadCounts() {
+  if (!userStore.userInfo?.id) return
+  try {
+    const res = await getMessageList(userStore.userInfo.id)
+    messageStore.setMessages(res.data || [])
+  } catch (error) {
+    console.error('获取消息列表失败:', error)
+  }
+}
+
+onMounted(() => {
+  loadUnreadCounts()
+})
 </script>
 
 <style scoped>

@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: data-collector-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/fault_warning_alert?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: "1234"
+    driver-class-name: com.mysql.cj.jdbc.Driver
 
 eureka:
   client:

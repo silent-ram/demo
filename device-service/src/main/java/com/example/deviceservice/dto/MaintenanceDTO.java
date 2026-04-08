@@ -5,8 +5,10 @@ import java.time.LocalDateTime;
 public class MaintenanceDTO {
     private Long id;
     private Long deviceId;
+    private String deviceName;
     private Long alertId;
     private String type;
+    private String faultCategory;
     private String description;
     private String actionTaken;
     private Long operatorId;
@@ -44,6 +46,14 @@ public class MaintenanceDTO {
         this.deviceId = deviceId;
     }
 
+    public String getDeviceName() {
+        return deviceName;
+    }
+
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
+    }
+
     public Long getAlertId() {
         return alertId;
     }
@@ -58,6 +68,14 @@ public class MaintenanceDTO {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public String getFaultCategory() {
+        return faultCategory;
+    }
+
+    public void setFaultCategory(String faultCategory) {
+        this.faultCategory = faultCategory;
     }
 
     public String getDescription() {

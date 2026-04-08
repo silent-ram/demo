@@ -6,6 +6,7 @@ public class MaintenanceDTO {
     private Long id;
     private Long deviceId;
     private String type;
+    private String faultCategory;
     private String description;
     private String status;
     private Long alertId;
@@ -48,6 +49,14 @@ public class MaintenanceDTO {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public String getFaultCategory() {
+        return faultCategory;
+    }
+
+    public void setFaultCategory(String faultCategory) {
+        this.faultCategory = faultCategory;
     }
 
     public String getDescription() {

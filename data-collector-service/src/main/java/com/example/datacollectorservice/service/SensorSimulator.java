@@ -4,7 +4,7 @@ import com.example.datacollectorservice.dto.AlertDTO;
 import com.example.datacollectorservice.dto.MetricDTO;
 import com.example.datacollectorservice.dto.PredictRequest;
 import com.example.datacollectorservice.dto.PredictResponse;
-import com.example.datacollectorservice.enum.SensorType;
+import com.example.datacollectorservice.enums.SensorType;
 import com.example.datacollectorservice.entity.SensorConfig;
 import com.example.datacollectorservice.feign.AlertServiceClient;
 import com.example.datacollectorservice.feign.DeviceServiceClient;
@@ -176,9 +176,9 @@ public class SensorSimulator {
             return;
         }
 
-        // 默认指标名称
-        String[] metricNames = {"temperature", "vibration", "pressure", "current"};
-        String[] units = {"°C", "mm/s", "Pa", "A"};
+        // 默认指标名称（只保留温度、振动、压力）
+        String[] metricNames = {"temperature", "vibration", "pressure"};
+        String[] units = {"°C", "mm/s", "Pa"};
 
         for (com.example.datacollectorservice.dto.DeviceDTO device : runningDevices) {
             String deviceId = device.getId().toString();
@@ -244,25 +244,25 @@ public class SensorSimulator {
                 } else if ("NORMAL".equals(mode)) {
                     // 正常范围输出，使用配置表阈值或默认阈值
                     double alertThreshold = threshold != null ? threshold : getDefaultThreshold(metricName);
-                    double normalMax = alertThreshold;
-                    double faultMax = alertThreshold + 10;
+                    double normalMax = alertThreshold * 0.8;  // 正常值上限为阈值的80%
+                    double faultMin = alertThreshold;  // 故障值下限为阈值
                     boolean isFault = random.nextDouble() < 0.1;
                     if (isFault) {
-                        value = faultMax + random.nextDouble() * 5;
+                        value = faultMin + random.nextDouble() * 5;
                     } else {
-                        value = normalMax - random.nextDouble() * 10;
+                        value = normalMax * (0.3 + random.nextDouble() * 0.5);  // 正常值在30%-80%之间
                         if (value < 0) value = 0.0;
                     }
                 } else {
                     // 默认正常输出
                     double alertThreshold = threshold != null ? threshold : getDefaultThreshold(metricName);
-                    double normalMax = alertThreshold;
-                    double faultMax = alertThreshold + 10;
+                    double normalMax = alertThreshold * 0.8;
+                    double faultMin = alertThreshold;
                     boolean isFault = random.nextDouble() < 0.1;
                     if (isFault) {
-                        value = faultMax + random.nextDouble() * 5;
+                        value = faultMin + random.nextDouble() * 5;
                     } else {
-                        value = normalMax - random.nextDouble() * 10;
+                        value = normalMax * (0.3 + random.nextDouble() * 0.5);
                         if (value < 0) value = 0.0;
                     }
                 }
@@ -299,6 +299,9 @@ public class SensorSimulator {
 
                         PredictRequest request = new PredictRequest();
                         request.setDeviceId(deviceId);
+                        request.setTemperature(temperature);
+                        request.setVibration(vibration);
+                        request.setPressure(pressure);
                         request.setSensorData(batchMetrics);
                         // 添加阈值配置（从 SensorType 枚举获取）
                         Map<String, Double> thresholds = new HashMap<>();
@@ -358,7 +361,7 @@ public class SensorSimulator {
      */
     private List<SensorConfig> getDefaultSensorConfigs() {
         List<SensorConfig> configs = new ArrayList<>();
-        for (String code : Arrays.asList("temperature", "vibration", "pressure", "current")) {
+        for (String code : Arrays.asList("temperature", "vibration", "pressure")) {
             SensorConfig config = new SensorConfig();
             config.setSensorCode(code);
             config.setEnabled(true);

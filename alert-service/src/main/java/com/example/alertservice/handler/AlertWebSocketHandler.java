@@ -42,7 +42,19 @@ public class AlertWebSocketHandler extends TextWebSocketHandler {
         for (WebSocketSession session : sessions) {
             if (session.isOpen()) {
                 try {
-                    session.sendMessage(new TextMessage("New alert: " + alert.getType() + " - " + alert.getMessage()));
+                    // 发送JSON格式的告警信息
+                    String json = String.format(
+                        "{\"id\":%d,\"deviceId\":%d,\"deviceName\":\"%s\",\"faultProbability\":%s,\"alertLevel\":\"%s\",\"type\":\"%s\",\"message\":\"%s\",\"resolved\":false,\"createdAt\":\"%s\"}",
+                        alert.getId(),
+                        alert.getDeviceId(),
+                        alert.getDeviceName() != null ? alert.getDeviceName() : "",
+                        alert.getFaultProbability() != null ? alert.getFaultProbability().toString() : "0",
+                        alert.getAlertLevel() != null ? alert.getAlertLevel() : "MEDIUM",
+                        alert.getType() != null ? alert.getType() : "",
+                        alert.getMessage() != null ? alert.getMessage().replace("\"", "\\\"") : "",
+                        alert.getCreatedAt() != null ? alert.getCreatedAt().toString() : ""
+                    );
+                    session.sendMessage(new TextMessage(json));
                 } catch (IOException e) {
                     System.err.println("Error sending message to session: " + e.getMessage());
                 }

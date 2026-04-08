@@ -6,10 +6,9 @@
           <span>告警列表</span>
           <div class="filters">
             <el-select v-model="filters.level" placeholder="告警级别" clearable style="width: 120px; margin-right: 10px;">
-              <el-option label="紧急" value="EMERGENCY" />
-              <el-option label="严重" value="CRITICAL" />
-              <el-option label="警告" value="WARNING" />
-              <el-option label="提示" value="INFO" />
+              <el-option label="高" value="HIGH" />
+              <el-option label="中" value="MEDIUM" />
+              <el-option label="低" value="LOW" />
             </el-select>
             <el-select v-model="filters.resolved" placeholder="状态" clearable style="width: 120px;">
               <el-option label="待处理" :value="false" />
@@ -69,9 +68,33 @@
             <el-radio-button value="STOPPED">停机</el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="处理备注">
-          <el-input v-model="resolveForm.note" type="textarea" :rows="3" placeholder="请输入处理备注" />
-        </el-form-item>
+
+        <!-- 去维修时显示完整表单 -->
+        <template v-if="resolveForm.resolveType === 'COMPLETED'">
+          <el-form-item label="维修类型" required>
+            <el-select v-model="resolveForm.maintenanceType" placeholder="请选择维修类型" style="width: 100%;">
+              <el-option v-for="mt in maintenanceTypes" :key="mt.value" :label="mt.label" :value="mt.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="故障分类">
+            <el-select v-model="resolveForm.faultCategory" placeholder="请选择故障分类" style="width: 100%;">
+              <el-option v-for="fc in faultCategories" :key="fc.value" :label="fc.label" :value="fc.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="故障描述">
+            <el-input v-model="resolveForm.description" type="textarea" :rows="2" placeholder="请输入故障描述" />
+          </el-form-item>
+          <el-form-item label="处理措施">
+            <el-input v-model="resolveForm.actionTaken" type="textarea" :rows="2" placeholder="请输入处理措施" />
+          </el-form-item>
+        </template>
+
+        <!-- 待维修或停机时只显示备注 -->
+        <template v-else>
+          <el-form-item label="处理备注">
+            <el-input v-model="resolveForm.note" type="textarea" :rows="3" placeholder="请输入处理备注" />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="resolveDialogVisible = false">取消</el-button>
@@ -131,8 +154,29 @@ const filters = reactive({
 const resolveForm = reactive({
   id: null,
   note: '',
-  resolveType: 'COMPLETED'
+  resolveType: 'COMPLETED',
+  maintenanceType: '',
+  faultCategory: '',
+  description: '',
+  actionTaken: ''
 })
+
+const maintenanceTypes = [
+  { value: 'ROUTINE', label: '日常保养' },
+  { value: 'REPAIR', label: '故障维修' },
+  { value: 'EMERGENCY', label: '紧急抢修' },
+  { value: 'UPGRADE', label: '改造升级' },
+  { value: 'INSPECTION', label: '点检' }
+]
+
+const faultCategories = [
+  { value: 'EQUIPMENT', label: '设备故障' },
+  { value: 'ELECTRICAL', label: '电气故障' },
+  { value: 'MECHANICAL', label: '机械故障' },
+  { value: 'SENSOR', label: '传感器故障' },
+  { value: 'SOFTWARE', label: '软件故障' },
+  { value: 'OTHER', label: '其他' }
+]
 
 async function loadAlerts() {
   loading.value = true
@@ -161,13 +205,31 @@ function handleResolve(row) {
   currentAlert.value = row
   resolveForm.id = row.id
   resolveForm.note = ''
+  resolveForm.resolveType = 'COMPLETED'
+  resolveForm.maintenanceType = ''
+  resolveForm.faultCategory = ''
+  resolveForm.description = row.message || ''
+  resolveForm.actionTaken = ''
   resolveDialogVisible.value = true
 }
 
 async function submitResolve() {
   resolveLoading.value = true
   try {
-    await resolveAlert(resolveForm.id, resolveForm.note, resolveForm.resolveType)
+    if (resolveForm.resolveType === 'COMPLETED') {
+      // 去维修：传递完整的维修信息
+      await resolveAlert(
+        resolveForm.id,
+        resolveForm.actionTaken || resolveForm.note,
+        resolveForm.resolveType,
+        resolveForm.maintenanceType,
+        resolveForm.faultCategory,
+        resolveForm.description
+      )
+    } else {
+      // 待维修或停机：只传备注
+      await resolveAlert(resolveForm.id, resolveForm.note, resolveForm.resolveType)
+    }
     ElMessage.success('处理成功')
     resolveDialogVisible.value = false
     loadAlerts()

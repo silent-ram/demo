@@ -3,6 +3,7 @@ package com.example.alertservice.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.example.alertservice.dto.AlertDTO;
 import com.example.alertservice.dto.AlertStatisticsDTO;
 import com.example.alertservice.dto.FailureRankDTO;
 import com.example.alertservice.dto.MaintenanceDTO;
@@ -16,6 +17,8 @@ import com.example.alertservice.mapper.ConfigMapper;
 import com.example.alertservice.feign.CollectorServiceClient;
 import com.example.alertservice.feign.DeviceServiceClient;
 import com.example.alertservice.feign.MlServiceClient;
+import com.example.alertservice.feign.UserServiceClient;
+import com.example.alertservice.handler.AlertWebSocketHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -47,7 +50,16 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
     private CollectorServiceClient collectorServiceClient;
 
     @Autowired
+    private UserServiceClient userServiceClient;
+
+    @Autowired
     private SimpMessagingTemplate messagingTemplate;
+
+    @Autowired
+    private MessageService messageService;
+
+    @Autowired
+    private AlertWebSocketHandler alertWebSocketHandler;
 
     public Page<Alert> page(com.baomidou.mybatisplus.extension.plugins.pagination.Page<Alert> page) {
         return alertMapper.selectPage(page, null);
@@ -58,23 +70,54 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         QueryWrapper<Alert> wrapper = new QueryWrapper<>();
         wrapper.eq("resolved", false);
         wrapper.lt("created_at", LocalDateTime.now().minusHours(1));
-        
+
         List<Alert> unresolvedAlerts = alertMapper.selectList(wrapper);
-        
+
         for (Alert alert : unresolvedAlerts) {
-            PredictRequest request = new PredictRequest();
-            request.setDeviceId(alert.getDeviceId().toString());
-            request.setMetricName(alert.getType());
-            request.setValue(Double.parseDouble(alert.getMessage()));
-            
-            PredictResponse response = mlServiceClient.predict(request);
-            
-            if (response.getIsFault()) {
-                alert.setResolved(false);
-                alert.setUpdatedAt(LocalDateTime.now());
-                alertMapper.updateById(alert);
+            try {
+                // 从告警消息中提取故障概率
+                String message = alert.getMessage();
+                Double probability = null;
+                if (message != null && message.contains("故障概率:")) {
+                    String numStr = message.replaceAll("[^0-9.]", "");
+                    probability = Double.parseDouble(numStr);
+                }
+
+                if (probability != null && probability >= 0.7) {
+                    // 故障概率超过阈值，触发升级
+                    upgradeAlertLevel(alert);
+                }
+            } catch (Exception e) {
+                // 忽略解析错误
             }
         }
+    }
+
+    /**
+     * 升级告警级别
+     */
+    private void upgradeAlertLevel(Alert alert) {
+        String currentLevel = alert.getAlertLevel();
+        String nextLevel = null;
+
+        switch (currentLevel) {
+            case "LOW":
+                nextLevel = "MEDIUM";
+                break;
+            case "MEDIUM":
+                nextLevel = "HIGH";
+                break;
+            case "HIGH":
+                // 已经是最高级别，不再升级
+                return;
+            default:
+                return;
+        }
+
+        alert.setPreviousLevel(currentLevel);
+        alert.setAlertLevel(nextLevel);
+        alert.setUpgradedAt(LocalDateTime.now());
+        alertMapper.updateById(alert);
     }
 
     public void receiveAlert(AlertDTO alertDTO) {
@@ -126,24 +169,73 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         alertMapper.insert(alert);
 
         messagingTemplate.convertAndSend("/topic/alerts", alert);
-    }
 
-    public void resolveAlert(Long id) {
-        resolveAlert(id, null, null, "COMPLETED");
-    }
+        // 同时通过原生WebSocket广播
+        try {
+            alertWebSocketHandler.broadcastAlert(alert);
+        } catch (Exception e) {
+            System.err.println("WebSocket广播失败: " + e.getMessage());
+        }
 
-    public void resolveAlert(Long id, String resolveNote, Long operatorId) {
-        resolveAlert(id, resolveNote, operatorId, "COMPLETED");
+        // 发送消息通知给所有管理员
+        try {
+            sendMessageToAdmins(alert);
+        } catch (Exception e) {
+            System.err.println("发送消息通知失败: " + e.getMessage());
+        }
     }
 
     /**
-     * 处理告警
+     * 发送消息给所有管理员
+     */
+    private void sendMessageToAdmins(Alert alert) {
+        try {
+            var userResult = userServiceClient.getUserList();
+            if (userResult != null && userResult.getData() != null) {
+                for (var user : userResult.getData()) {
+                    String role = user.get("role") != null ? user.get("role").toString() : "";
+                    if ("ADMIN".equals(role)) {
+                        Long userId = user.get("id") != null ? Long.valueOf(user.get("id").toString()) : null;
+                        if (userId != null) {
+                            String title = "【" + alert.getAlertLevel() + "级告警】" + alert.getDeviceName();
+                            String content = alert.getMessage();
+                            messageService.sendMessage(userId, "ALERT", title, content, alert.getId());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("获取用户列表失败: " + e.getMessage());
+        }
+    }
+
+    public void resolveAlert(Long id) {
+        resolveAlert(id, null, null, "COMPLETED", null, null, null);
+    }
+
+    public void resolveAlert(Long id, String resolveNote, Long operatorId) {
+        resolveAlert(id, resolveNote, operatorId, "COMPLETED", null, null, null);
+    }
+
+    /**
+     * 处理告警（简化版本）
+     */
+    public void resolveAlert(Long id, String resolveNote, Long operatorId, String resolveType) {
+        resolveAlert(id, resolveNote, operatorId, resolveType, null, null, null);
+    }
+
+    /**
+     * 处理告警（完整版本）
      * @param id 告警ID
      * @param resolveNote 处理备注
      * @param operatorId 操作人ID
      * @param resolveType 处理类型: COMPLETED(已维修), PENDING(待维修), STOPPED(停机)
+     * @param maintenanceType 维修类型
+     * @param faultCategory 故障分类
+     * @param description 故障描述
      */
-    public void resolveAlert(Long id, String resolveNote, Long operatorId, String resolveType) {
+    public void resolveAlert(Long id, String resolveNote, Long operatorId, String resolveType,
+                             String maintenanceType, String faultCategory, String description) {
         Alert alert = alertMapper.selectById(id);
         if (alert == null) {
             throw new RuntimeException("Alert not found");
@@ -165,8 +257,9 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
 
                 MaintenanceDTO maintenance = new MaintenanceDTO();
                 maintenance.setDeviceId(deviceId);
-                maintenance.setType(alert.getType() != null ? alert.getType() : "FAULT");
-                maintenance.setDescription("告警处理: " + (alert.getMessage() != null ? alert.getMessage() : "无描述"));
+                maintenance.setType(maintenanceType != null ? maintenanceType : (alert.getType() != null ? alert.getType() : "REPAIR"));
+                maintenance.setFaultCategory(faultCategory);
+                maintenance.setDescription(description != null ? description : ("告警处理: " + (alert.getMessage() != null ? alert.getMessage() : "无描述")));
                 maintenance.setAlertId(id);
                 maintenance.setActionTaken(resolveNote != null ? resolveNote : "已维修");
                 maintenance.setOperatorId(operatorId);
@@ -180,10 +273,44 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
                     System.err.println("Failed to create maintenance record: " + e.getMessage());
                 }
             } else if ("STOPPED".equals(resolveType)) {
-                // 停机：更新设备状态为离线
+                // 停机：更新设备状态为离线，并创建维修记录
                 deviceServiceClient.updateDeviceStatus(deviceId, "OFFLINE");
+
+                MaintenanceDTO maintenance = new MaintenanceDTO();
+                maintenance.setDeviceId(deviceId);
+                maintenance.setType(maintenanceType != null ? maintenanceType : (alert.getType() != null ? alert.getType() : "REPAIR"));
+                maintenance.setFaultCategory(faultCategory);
+                maintenance.setDescription(description != null ? description : ("告警处理-停机: " + (alert.getMessage() != null ? alert.getMessage() : "无描述")));
+                maintenance.setAlertId(id);
+                maintenance.setActionTaken(resolveNote != null ? resolveNote : "设备已停机");
+                maintenance.setOperatorId(operatorId);
+                maintenance.setStatus("COMPLETED");
+                maintenance.setRepairedAt(LocalDateTime.now());
+
+                try {
+                    deviceServiceClient.createMaintenance(maintenance);
+                } catch (Exception e) {
+                    System.err.println("Failed to create maintenance record: " + e.getMessage());
+                }
+            } else if ("PENDING".equals(resolveType)) {
+                // 待维修：创建待处理的维修记录，用户后续可继续处理
+                MaintenanceDTO maintenance = new MaintenanceDTO();
+                maintenance.setDeviceId(deviceId);
+                maintenance.setType(maintenanceType != null ? maintenanceType : (alert.getType() != null ? alert.getType() : "REPAIR"));
+                maintenance.setFaultCategory(faultCategory);
+                maintenance.setDescription(description != null ? description : ("告警处理-待维修: " + (alert.getMessage() != null ? alert.getMessage() : "无描述")));
+                maintenance.setAlertId(id);
+                maintenance.setActionTaken(resolveNote != null ? resolveNote : "待维修");
+                maintenance.setOperatorId(operatorId);
+                maintenance.setStatus("PENDING");
+                maintenance.setRepairedAt(LocalDateTime.now());
+
+                try {
+                    deviceServiceClient.createMaintenance(maintenance);
+                } catch (Exception e) {
+                    System.err.println("Failed to create maintenance record: " + e.getMessage());
+                }
             }
-            // PENDING(待维修)：只标记告警为已解决，不改变设备状态
         }
     }
 
@@ -331,16 +458,21 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         Long total = alertMapper.countByDateRange(startDate, endDate);
 
         Map<String, Long> byLevel = new LinkedHashMap<>();
-        List<AlertMapper.AlertLevelCount> levelCounts = alertMapper.countByLevelAndDateRange(startDate, endDate);
-        for (AlertMapper.AlertLevelCount item : levelCounts) {
-            byLevel.put(item.getAlertLevel(), item.getCount());
+        List<Map<String, Object>> levelCounts = alertMapper.countByLevelAndDateRange(startDate, endDate);
+        for (Map<String, Object> item : levelCounts) {
+            String level = item.get("alert_level") != null ? item.get("alert_level").toString() : "";
+            Long count = item.get("count") != null ? ((Number) item.get("count")).longValue() : 0L;
+            byLevel.put(level, count);
         }
 
         Map<String, Long> byDevice = new LinkedHashMap<>();
-        List<AlertMapper.AlertDeviceCount> deviceCounts = alertMapper.countByDeviceAndDateRange(startDate, endDate);
-        for (AlertMapper.AlertDeviceCount item : deviceCounts) {
-            String key = item.getDeviceName() != null ? item.getDeviceName() : "设备" + item.getDeviceId();
-            byDevice.put(key, item.getCount());
+        List<Map<String, Object>> deviceCounts = alertMapper.countByDeviceAndDateRange(startDate, endDate);
+        for (Map<String, Object> item : deviceCounts) {
+            String deviceName = item.get("device_name") != null ? item.get("device_name").toString() : null;
+            Long deviceId = item.get("device_id") != null ? ((Number) item.get("device_id")).longValue() : null;
+            Long count = item.get("count") != null ? ((Number) item.get("count")).longValue() : 0L;
+            String key = deviceName != null ? deviceName : "设备" + deviceId;
+            byDevice.put(key, count);
         }
 
         return new AlertStatisticsDTO(total, byLevel, byDevice);

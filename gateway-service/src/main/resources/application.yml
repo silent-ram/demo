@@ -10,25 +10,25 @@ spring:
         - id: user-service
           uri: lb://user-service
           predicates:
-            - Path=/api/user/**,/api/auth/**
+            - Path=/api/user/**,/api/auth/**,/api/operation-log/**
           filters:
             - StripPrefix=1
         - id: device-service
           uri: lb://device-service
           predicates:
-            - Path=/api/device/**,/api/maintenance/**
+            - Path=/api/device/**,/api/maintenance/**,/api/report/**
           filters:
             - StripPrefix=1
         - id: collector-service
           uri: lb://data-collector-service
           predicates:
-            - Path=/api/collector/**
+            - Path=/api/collector/**,/api/sensor-config/**
           filters:
             - StripPrefix=1
         - id: alert-service
           uri: lb://alert-service
           predicates:
-            - Path=/api/alert/**
+            - Path=/api/alert/**,/api/message/**
           filters:
             - StripPrefix=1
         - id: ml-service

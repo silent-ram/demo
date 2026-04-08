@@ -2,7 +2,7 @@
   <div class="monitoring">
     <el-row :gutter="20">
       <el-col v-for="device in deviceList" :key="device.id" :span="6">
-        <el-card shadow="hover" class="device-card" :class="{ 'warning-card': device.faultProbability >= 0.7 }">
+        <el-card shadow="hover" class="device-card clickable" :class="{ 'warning-card': device.faultProbability >= 0.7 }" @click="goToDetail(device.id)">
           <div class="device-header">
             <el-icon size="24"><Monitor /></el-icon>
             <span class="device-name">{{ device.name }}</span>
@@ -46,8 +46,11 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElNotification } from 'element-plus'
-import { getDeviceList } from '@/api/device'
+import { getDeviceList, getMaintenancesByDevice } from '@/api/device'
+
+const router = useRouter()
 import { getLatestMetric } from '@/api/collector'
 import { useAlertStore } from '@/stores/alert'
 
@@ -88,15 +91,46 @@ function connectWebSocket() {
     alertStore.setWsConnected(true)
   }
   
-  ws.onmessage = (event) => {
+  ws.onmessage = async (event) => {
     console.log('收到告警消息:', event.data)
-    ElNotification({
-      title: '新告警',
-      message: event.data,
-      type: 'warning',
-      duration: 5000
-    })
-    loadDevices()
+    try {
+      const alert = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
+      const prob = (alert.faultProbability * 100 || 0).toFixed(1)
+
+      // 获取相关维修记录
+      let maintenanceInfo = ''
+      if (alert.deviceId) {
+        try {
+          const mRes = await getMaintenancesByDevice(alert.deviceId)
+          const records = mRes.data || []
+          if (records.length > 0) {
+            const latest = records[0]
+            maintenanceInfo = '\n历史维修: ' + (latest.type || '未知') + ' - ' + (latest.description || '无描述')
+          } else {
+            maintenanceInfo = '\n历史维修: 暂无记录'
+          }
+        } catch (e) {
+          maintenanceInfo = '\n历史维修: 查询失败'
+        }
+      }
+
+      ElNotification({
+        title: '【' + alert.alertLevel + '级告警】' + alert.deviceName,
+        message: '故障概率: ' + prob + '%\n告警类型: ' + (alert.type || '未知') + '\n消息: ' + (alert.message || '无') + maintenanceInfo,
+        type: 'warning',
+        duration: 0,
+        showClose: true
+      })
+      loadDevices()
+    } catch (e) {
+      console.error('解析告警消息失败:', e)
+      ElNotification({
+        title: '新告警',
+        message: event.data,
+        type: 'warning',
+        duration: 5000
+      })
+    }
   }
   
   ws.onerror = (error) => {
@@ -118,13 +152,17 @@ function getProgressColor(probability) {
 }
 
 function getStatusType(status) {
-  const map = { 'NORMAL': 'success', 'WARNING': 'warning', 'FAULT': 'danger', 'OFFLINE': 'info' }
+  const map = { 'NORMAL': 'success', 'RUNNING': 'primary', 'STANDBY': 'info', 'MAINTENANCE': 'warning', 'FAULT': 'danger', 'OFFLINE': 'info' }
   return map[status] || 'info'
 }
 
 function getStatusText(status) {
-  const map = { 'NORMAL': '正常', 'WARNING': '预警', 'FAULT': '故障', 'OFFLINE': '离线' }
+  const map = { 'NORMAL': '正常运行', 'RUNNING': '运行中', 'STANDBY': '待机', 'MAINTENANCE': '维护中', 'FAULT': '故障', 'OFFLINE': '离线' }
   return map[status] || status
+}
+
+function goToDetail(deviceId) {
+  router.push(`/device/${deviceId}`)
 }
 
 onMounted(() => {
@@ -148,6 +186,15 @@ onUnmounted(() => {
 .device-card {
   margin-bottom: 20px;
   transition: all 0.3s;
+}
+
+.device-card.clickable {
+  cursor: pointer;
+}
+
+.device-card.clickable:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .device-card.warning-card {

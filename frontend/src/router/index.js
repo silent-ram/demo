@@ -67,6 +67,24 @@ const routes = [
         name: 'Users',
         component: () => import('@/views/UsersView.vue'),
         meta: { title: '用户管理', requiresAdmin: true }
+      },
+      {
+        path: 'sensor-config',
+        name: 'SensorConfig',
+        component: () => import('@/views/SensorConfigView.vue'),
+        meta: { title: '传感器配置', requiresAdmin: true }
+      },
+      {
+        path: 'alert-statistics',
+        name: 'AlertStatistics',
+        component: () => import('@/views/AlertStatisticsView.vue'),
+        meta: { title: '告警统计' }
+      },
+      {
+        path: 'operation-log',
+        name: 'OperationLog',
+        component: () => import('@/views/OperationLogView.vue'),
+        meta: { title: '操作日志', requiresAdmin: true }
       }
     ]
   }

@@ -22,7 +22,7 @@
             <el-table-column label="操作" width="120">
               <template #default="{ row }">
                 <el-button
-                  v-if="!row.read"
+                  v-if="!row.isRead"
                   type="primary"
                   link
                   @click="handleMarkAsRead(row)"
@@ -82,7 +82,7 @@ function getTypeText(type) {
 async function loadAllMessages() {
   loading.value = true
   try {
-    const res = await getMessageList(userStore.user?.id)
+    const res = await getMessageList(userStore.userInfo?.id)
     allMessages.value = res.data || []
     messageStore.setMessages(allMessages.value)
   } catch (error) {
@@ -95,7 +95,7 @@ async function loadAllMessages() {
 async function loadUnreadMessages() {
   loading.value = true
   try {
-    const res = await getUnreadMessages(userStore.user?.id)
+    const res = await getUnreadMessages(userStore.userInfo?.id)
     unreadMessages.value = res.data || []
   } catch (error) {
     console.error('加载未读消息失败:', error)
@@ -107,6 +107,7 @@ async function loadUnreadMessages() {
 async function handleMarkAsRead(row) {
   try {
     await markAsRead(row.id)
+    messageStore.markAsRead(row.id)
     ElMessage.success('标记成功')
     loadAllMessages()
     loadUnreadMessages()
@@ -117,7 +118,8 @@ async function handleMarkAsRead(row) {
 
 async function handleMarkAllRead() {
   try {
-    await markAllAsRead(userStore.user?.id)
+    await markAllAsRead(userStore.userInfo?.id)
+    messageStore.markAllAsRead()
     ElMessage.success('全部已读')
     loadAllMessages()
     loadUnreadMessages()

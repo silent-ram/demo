@@ -4,6 +4,10 @@
       <template #header>
         <div class="card-header">
           <span>设备列表</span>
+          <el-button type="success" @click="handleExport">
+            <el-icon><Download /></el-icon>
+            导出
+          </el-button>
           <el-button v-if="userStore.role === 'ADMIN'" type="primary" @click="handleAdd">
             <el-icon><Plus /></el-icon>
             新增设备
@@ -71,7 +75,8 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getDeviceList, createDevice, updateDevice, deleteDevice, updateDeviceStatus } from '@/api/device'
+import { getDeviceList, createDevice, updateDevice, deleteDevice, updateDeviceStatus, updateDeviceSimulation } from '@/api/device'
+import { exportDeviceReport } from '@/api/report'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -189,6 +194,23 @@ async function handleSubmit() {
   }
 }
 
+async function handleExport() {
+  try {
+    const res = await exportDeviceReport()
+    const blob = new Blob([res], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `设备台账_${new Date().getTime()}.xlsx`
+    link.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败')
+  }
+}
+
 function getStatusType(status) {
   const map = {
     'NORMAL': 'success',
@@ -203,7 +225,7 @@ function getStatusType(status) {
 
 function getStatusText(status) {
   const map = {
-    'NORMAL': '正常运行',
+    'NORMAL': '运行中',
     'RUNNING': '运行中',
     'STANDBY': '待机',
     'MAINTENANCE': '维护中',

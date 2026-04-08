@@ -5,32 +5,45 @@ import numpy as np
 import io
 import base64
 
-def generate_trend_chart(device_id, data_points=100):
-    np.random.seed(device_id)
-    
-    time_points = np.arange(data_points)
-    temperature = np.random.normal(65, 10, data_points)
-    vibration = np.random.normal(0.3, 0.15, data_points)
-    pressure = np.random.normal(100, 15, data_points)
+def generate_trend_chart(device_id, data_points=100, data=None):
+    """
+    生成趋势图
+    device_id: 设备ID
+    data_points: 数据点数量（当没有真实数据时使用）
+    data: 真实数据，格式为 {'temperature': [...], 'vibration': [...], 'pressure': [...], 'timestamps': [...]}
+    """
+    if data is not None and 'temperature' in data and len(data['temperature']) > 0:
+        temperature = np.array(data['temperature'])
+        vibration = np.array(data['vibration'])
+        pressure = np.array(data['pressure'])
+        timestamps = data.get('timestamps', np.arange(len(temperature)))
+        data_points = len(temperature)
+    else:
+        np.random.seed(device_id)
+        time_points = np.arange(data_points)
+        temperature = np.random.normal(65, 10, data_points)
+        vibration = np.random.normal(0.3, 0.15, data_points)
+        pressure = np.random.normal(100, 15, data_points)
+        timestamps = time_points
     
     fig, axes = plt.subplots(3, 1, figsize=(12, 10))
     fig.suptitle(f'设备 {device_id} 传感器数据趋势', fontsize=16)
     
-    axes[0].plot(time_points, temperature, 'r-', linewidth=2)
+    axes[0].plot(timestamps, temperature, 'r-', linewidth=2)
     axes[0].set_ylabel('温度 (°C)', fontsize=12)
     axes[0].set_title('温度趋势', fontsize=14)
     axes[0].grid(True, alpha=0.3)
     axes[0].axhline(y=80, color='orange', linestyle='--', linewidth=2, label='警告阈值')
     axes[0].legend()
-    
-    axes[1].plot(time_points, vibration, 'g-', linewidth=2)
+
+    axes[1].plot(timestamps, vibration, 'g-', linewidth=2)
     axes[1].set_ylabel('振动 (mm/s)', fontsize=12)
     axes[1].set_title('振动趋势', fontsize=14)
     axes[1].grid(True, alpha=0.3)
     axes[1].axhline(y=0.6, color='orange', linestyle='--', linewidth=2, label='警告阈值')
     axes[1].legend()
-    
-    axes[2].plot(time_points, pressure, 'b-', linewidth=2)
+
+    axes[2].plot(timestamps, pressure, 'b-', linewidth=2)
     axes[2].set_xlabel('时间点', fontsize=12)
     axes[2].set_ylabel('压力 (kPa)', fontsize=12)
     axes[2].set_title('压力趋势', fontsize=14)

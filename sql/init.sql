@@ -2,6 +2,14 @@
 -- 工业设备故障预警系统 - 示例数据初始化
 -- ============================================================
 
+USE fault_warning_user;
+
+-- 更新用户密码为BCrypt加密
+-- admin / admin123
+UPDATE t_user SET password = '$2a$10$sE26teFtCPvyiXX3B.efAOFOn3YUo9xOdUxAWxfSu/a6RokjlVA0.' WHERE username = 'admin';
+-- operator / operator123
+UPDATE t_user SET password = '$2a$10$71GCmbm7.3VP/ItOKjHzruHbL.d.aW52AxYAm.sPyyoVE9G8mb8Mu' WHERE username = 'operator';
+
 USE fault_warning_device;
 
 -- 删除维修记录

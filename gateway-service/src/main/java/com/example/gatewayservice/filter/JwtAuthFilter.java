@@ -70,12 +70,15 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
             String username = claims.getSubject();
             String role = claims.get("role", String.class);
+            Object userIdClaim = claims.get("userId");
+            String userId = userIdClaim != null ? userIdClaim.toString() : "0";
 
-            System.out.println("JWT Filter - Valid token for user: " + username + ", role: " + role);
+            System.out.println("JWT Filter - Valid token for user: " + username + ", role: " + role + ", userId: " + userId);
 
             ServerHttpRequest modifiedRequest = request.mutate()
                     .header("X-User-Name", username)
                     .header("X-User-Role", role)
+                    .header("X-User-Id", userId)
                     .build();
 
             return chain.filter(exchange.mutate().request(modifiedRequest).build());

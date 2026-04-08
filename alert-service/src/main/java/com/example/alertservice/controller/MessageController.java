@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/message")
+@RequestMapping("/message")
 @Tag(name = "消息管理", description = "消息CRUD操作接口")
 public class MessageController {
 

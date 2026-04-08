@@ -2,7 +2,7 @@ import request from '@/utils/request'
 
 export function getMessageList(userId) {
   return request({
-    url: '/api/message/list',
+    url: '/message/list',
     method: 'get',
     params: { userId }
   })
@@ -10,7 +10,7 @@ export function getMessageList(userId) {
 
 export function getUnreadMessages(userId) {
   return request({
-    url: '/api/message/unread',
+    url: '/message/unread',
     method: 'get',
     params: { userId }
   })
@@ -18,14 +18,14 @@ export function getUnreadMessages(userId) {
 
 export function markAsRead(id) {
   return request({
-    url: `/api/message/read/${id}`,
+    url: `/message/read/${id}`,
     method: 'post'
   })
 }
 
 export function markAllAsRead(userId) {
   return request({
-    url: '/api/message/read-all',
+    url: '/message/read-all',
     method: 'post',
     params: { userId }
   })

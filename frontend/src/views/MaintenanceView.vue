@@ -12,6 +12,7 @@
       </template>
       
       <el-table :data="maintenanceList" v-loading="loading" stripe>
+        <el-table-column prop="deviceName" label="设备名称" width="150" />
         <el-table-column prop="type" label="维修类型" width="120">
           <template #default="{ row }">
             <el-tag>{{ getMaintenanceTypeText(row.type) }}</el-tag>
@@ -30,6 +31,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="repairedAt" label="维修时间" width="180" />
+        <el-table-column label="操作" width="150">
+          <template #default="{ row }">
+            <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
+            <el-button v-if="row.status === 'PENDING'" type="warning" link @click="handleProcess(row)">处理</el-button>
+          </template>
+        </el-table-column>
       </el-table>
       
       <el-pagination
@@ -44,7 +51,7 @@
       />
     </el-card>
 
-    <el-dialog v-model="dialogVisible" title="新增维修记录" width="500px">
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="设备" prop="deviceId">
           <el-select v-model="form.deviceId" placeholder="请选择设备" style="width: 100%;">
@@ -73,21 +80,41 @@
         <el-button type="primary" :loading="submitLoading" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="detailDialogVisible" title="维修记录详情" width="500px">
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="设备名称">{{ currentMaintenance.deviceName }}</el-descriptions-item>
+        <el-descriptions-item label="维修类型">
+          <el-tag>{{ getMaintenanceTypeText(currentMaintenance.type) }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="故障分类">
+          <el-tag>{{ getFaultCategoryText(currentMaintenance.faultCategory) }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="故障描述">{{ currentMaintenance.description }}</el-descriptions-item>
+        <el-descriptions-item label="处理措施">{{ currentMaintenance.actionTaken }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="getStatusType(currentMaintenance.status)">{{ getStatusText(currentMaintenance.status) }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="维修时间">{{ currentMaintenance.repairedAt }}</el-descriptions-item>
+      </el-descriptions>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getMaintenanceList, createMaintenance } from '@/api/device'
-import { getDeviceList } from '@/api/device'
+import { getMaintenanceList, createMaintenance, updateMaintenance, getDeviceList } from '@/api/device'
 
 const loading = ref(false)
 const maintenanceList = ref([])
 const deviceList = ref([])
 const dialogVisible = ref(false)
+const detailDialogVisible = ref(false)
+const dialogTitle = ref('新增维修记录')
 const submitLoading = ref(false)
 const formRef = ref(null)
+const currentMaintenance = ref({})
 
 const pagination = reactive({
   page: 1,
@@ -96,6 +123,7 @@ const pagination = reactive({
 })
 
 const form = reactive({
+  id: null,
   deviceId: null,
   type: '',
   faultCategory: '',
@@ -106,7 +134,7 @@ const form = reactive({
 
 const rules = {
   deviceId: [{ required: true, message: '请选择设备', trigger: 'change' }],
-  type: [{ required: true, message: '请输入维修类型', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择维修类型', trigger: 'change' }],
   description: [{ required: true, message: '请输入故障描述', trigger: 'blur' }]
 }
 
@@ -133,8 +161,21 @@ async function loadDevices() {
 }
 
 function handleAdd() {
-  Object.assign(form, { deviceId: null, type: '', faultCategory: '', description: '', actionTaken: '', status: 'COMPLETED' })
+  dialogTitle.value = '新增维修记录'
+  Object.assign(form, { id: null, deviceId: null, type: '', faultCategory: '', description: '', actionTaken: '', status: 'COMPLETED' })
   dialogVisible.value = true
+}
+
+function handleProcess(row) {
+  dialogTitle.value = '处理维修'
+  // 预填充表单，状态设为已完成
+  Object.assign(form, { ...row, status: 'COMPLETED' })
+  dialogVisible.value = true
+}
+
+function handleDetail(row) {
+  currentMaintenance.value = row
+  detailDialogVisible.value = true
 }
 
 async function handleSubmit() {
@@ -143,8 +184,13 @@ async function handleSubmit() {
 
   submitLoading.value = true
   try {
-    await createMaintenance(form)
-    ElMessage.success('创建成功')
+    if (form.id) {
+      await updateMaintenance(form.id, form)
+      ElMessage.success('更新成功')
+    } else {
+      await createMaintenance(form)
+      ElMessage.success('创建成功')
+    }
     dialogVisible.value = false
     loadMaintenance()
   } catch (error) {

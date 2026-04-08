@@ -99,3 +99,10 @@ export function deleteMaintenance(id) {
     method: 'delete'
   })
 }
+
+export function getMaintenancesByDevice(deviceId) {
+  return request({
+    url: `/maintenance/device/${deviceId}`,
+    method: 'get'
+  })
+}

@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 @RestController
-@RequestMapping("/api/report")
+@RequestMapping("/report")
 @Tag(name = "报表导出", description = "导出各类报表")
 public class ReportController {
 

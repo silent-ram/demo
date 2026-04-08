@@ -15,7 +15,9 @@ public class Maintenance {
     private Long alertId;
     
     private String type;
-    
+
+    private String faultCategory;
+
     private String description;
     
     private String actionTaken;
@@ -60,6 +62,14 @@ public class Maintenance {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public String getFaultCategory() {
+        return faultCategory;
+    }
+
+    public void setFaultCategory(String faultCategory) {
+        this.faultCategory = faultCategory;
     }
 
     public String getDescription() {

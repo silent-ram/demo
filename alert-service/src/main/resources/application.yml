@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: alert-service
+  main:
+    allow-bean-definition-overriding: true
   datasource:
     url: jdbc:mysql://localhost:3306/fault_warning_alert
     username: root

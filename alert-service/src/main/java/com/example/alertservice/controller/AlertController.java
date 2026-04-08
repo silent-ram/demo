@@ -5,6 +5,7 @@ import com.example.alertservice.dto.AlertDTO;
 import com.example.alertservice.dto.AlertStatisticsDTO;
 import com.example.alertservice.dto.FailureRankDTO;
 import com.example.alertservice.entity.Alert;
+import com.example.alertservice.feign.OperationLogClient;
 import com.example.alertservice.service.AlertService;
 import com.example.alertservice.exception.Result;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +25,9 @@ public class AlertController {
 
     @Autowired
     private AlertService alertService;
+
+    @Autowired
+    private OperationLogClient operationLogClient;
 
     @GetMapping
     @Operation(summary = "分页查询告警", description = "支持分页查询所有告警")
@@ -54,9 +58,24 @@ public class AlertController {
             @PathVariable Long id,
             @RequestParam(required = false) String resolveNote,
             @RequestParam(required = false) Long operatorId,
-            @RequestParam(defaultValue = "COMPLETED") String resolveType) {
+            @RequestParam(defaultValue = "COMPLETED") String resolveType,
+            @RequestParam(required = false) String maintenanceType,
+            @RequestParam(required = false) String faultCategory,
+            @RequestParam(required = false) String description,
+            @RequestHeader(value = "X-User-Id", required = false, defaultValue = "0") Long userId,
+            @RequestHeader(value = "X-User-Name", required = false, defaultValue = "unknown") String username) {
         // resolveType: COMPLETED(已维修), PENDING(待维修), STOPPED(停机)
-        alertService.resolveAlert(id, resolveNote, operatorId, resolveType);
+        Alert alert = alertService.getAlertById(id);
+        alertService.resolveAlert(id, resolveNote, operatorId, resolveType, maintenanceType, faultCategory, description);
+
+        // 记录操作日志
+        String resolveTypeText = switch (resolveType) {
+            case "COMPLETED" -> "已维修";
+            case "STOPPED" -> "停机";
+            default -> "待维修";
+        };
+        logOperation(userId, username, "ALERT", "处理告警ID:" + id + " - " + resolveTypeText, alert != null ? alert.getDeviceId() : null);
+
         String message = switch (resolveType) {
             case "COMPLETED" -> "已创建维修记录";
             case "STOPPED" -> "设备已停机";
@@ -88,17 +107,23 @@ public class AlertController {
 
     @PutMapping("/config")
     @Operation(summary = "更新配置", description = "更新系统配置")
-    public Result<String> updateConfig(@RequestBody Map<String, String> config) {
+    public Result<String> updateConfig(@RequestBody Map<String, String> config,
+            @RequestHeader(value = "X-User-Id", required = false, defaultValue = "0") Long userId,
+            @RequestHeader(value = "X-User-Name", required = false, defaultValue = "unknown") String username) {
         for (Map.Entry<String, String> entry : config.entrySet()) {
             alertService.putConfig(entry.getKey(), entry.getValue());
         }
+        logOperation(userId, username, "CONFIG", "更新配置: " + config.keySet(), null);
         return Result.success("配置更新成功", null);
     }
 
     @PutMapping("/config/{key}")
     @Operation(summary = "更新单个配置", description = "更新单个配置项")
-    public Result<String> putConfig(@PathVariable String key, @RequestBody String value) {
+    public Result<String> putConfig(@PathVariable String key, @RequestBody String value,
+            @RequestHeader(value = "X-User-Id", required = false, defaultValue = "0") Long userId,
+            @RequestHeader(value = "X-User-Name", required = false, defaultValue = "unknown") String username) {
         alertService.putConfig(key, value);
+        logOperation(userId, username, "CONFIG", "更新配置项: " + key, null);
         return Result.success("配置更新成功", null);
     }
 
@@ -118,8 +143,11 @@ public class AlertController {
 
     @PutMapping("/threshold")
     @Operation(summary = "更新阈值", description = "更新故障概率阈值")
-    public Result<String> updateThreshold(@RequestBody String value) {
+    public Result<String> updateThreshold(@RequestBody String value,
+            @RequestHeader(value = "X-User-Id", required = false, defaultValue = "0") Long userId,
+            @RequestHeader(value = "X-User-Name", required = false, defaultValue = "unknown") String username) {
         alertService.updateThreshold(value);
+        logOperation(userId, username, "CONFIG", "更新故障阈值: " + value, null);
         return Result.success("阈值更新成功", null);
     }
 
@@ -154,5 +182,13 @@ public class AlertController {
             @RequestParam(defaultValue = "10") Integer limit) {
         List<FailureRankDTO> rankList = alertService.getFailureRank(startDate, endDate, limit);
         return Result.success(rankList);
+    }
+
+    private void logOperation(Long userId, String username, String operationType, String content, Long deviceId) {
+        try {
+            operationLogClient.logOperation(userId, username, operationType, content, deviceId, "127.0.0.1");
+        } catch (Exception e) {
+            // 忽略日志记录失败
+        }
     }
 }

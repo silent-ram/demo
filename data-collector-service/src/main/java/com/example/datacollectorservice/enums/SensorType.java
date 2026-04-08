@@ -1,4 +1,4 @@
-package com.example.datacollectorservice.enum;
+package com.example.datacollectorservice.enums;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -12,22 +12,22 @@ public enum SensorType {
     /**
      * 温度传感器
      */
-    TEMPERATURE("temperature", "温度", "℃", 0, 100, 80),
+    TEMPERATURE("temperature", "温度", "℃", 0.0, 100.0, 80.0),
 
     /**
      * 振动传感器
      */
-    VIBRATION("vibration", "振动", "mm/s", 0, 2, 0.6),
+    VIBRATION("vibration", "振动", "mm/s", 0.0, 2.0, 0.5),
 
     /**
      * 压力传感器
      */
-    PRESSURE("pressure", "压力", "bar", 0, 200, 130),
+    PRESSURE("pressure", "压力", "bar", 0.0, 200.0, 130.0),
 
     /**
      * 电流传感器
      */
-    CURRENT("current", "电流", "A", 0, 10, 7);
+    CURRENT("current", "电流", "A", 0.0, 10.0, 7.0);
 
     private final String code;
     private final String name;

@@ -55,7 +55,7 @@ public class UserService {
 
         log.info("登录成功: username={}, role={}", user.getUsername(), user.getRole());
 
-        String token = jwtUtil.generateToken(user.getUsername(), user.getRole());
+        String token = jwtUtil.generateToken(user.getUsername(), user.getRole(), user.getId());
         UserDTO userDTO = new UserDTO(user.getId(), user.getUsername(), user.getRole(), user.getCreatedAt());
 
         return new LoginResponse(token, userDTO);

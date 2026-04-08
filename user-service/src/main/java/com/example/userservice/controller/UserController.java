@@ -5,10 +5,12 @@ import com.example.userservice.dto.LoginResponse;
 import com.example.userservice.dto.UserDTO;
 import com.example.userservice.exception.Result;
 import com.example.userservice.service.UserService;
+import com.example.userservice.service.OperationLogService;
 import com.example.userservice.config.JwtUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -18,8 +20,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/user")
 @Tag(name = "用户管理", description = "用户登录、注册、查询等接口")
-@Slf4j
 public class UserController {
+    private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     @Autowired
     private UserService userService;
@@ -27,12 +29,30 @@ public class UserController {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private OperationLogService operationLogService;
+
     @PostMapping("/login")
     @Operation(summary = "用户登录", description = "用户名密码登录，返回JWT token")
     public Result<LoginResponse> login(@RequestBody LoginRequest request) {
         log.info("收到登录请求: username={}", request.getUsername());
         LoginResponse response = userService.login(request);
         log.info("登录成功: username={}", request.getUsername());
+
+        // 记录登录日志
+        try {
+            operationLogService.logOperation(
+                response.getUserInfo().getId(),
+                response.getUserInfo().getUsername(),
+                "LOGIN",
+                "用户登录",
+                null,
+                "127.0.0.1"
+            );
+        } catch (Exception e) {
+            log.error("记录登录日志失败", e);
+        }
+
         return Result.success(response);
     }
 

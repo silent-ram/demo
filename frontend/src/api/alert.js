@@ -83,3 +83,19 @@ export function getChart(deviceId) {
     method: 'get'
   })
 }
+
+export function getFrequencyStatistics(params) {
+  return request({
+    url: '/alert/statistics/frequency',
+    method: 'get',
+    params
+  })
+}
+
+export function getFailureRank(params) {
+  return request({
+    url: '/alert/statistics/failure-rank',
+    method: 'get',
+    params
+  })
+}
