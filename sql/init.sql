@@ -1,5 +1,81 @@
 -- ============================================================
--- 工业设备故障预警系统 - 示例数据初始化
+-- 工业设备故障预警系统 - 数据库初始化脚本
+-- ============================================================
+
+-- 用户库
+USE fault_warning_user;
+
+CREATE TABLE IF NOT EXISTS t_user (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'OPERATOR',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 设备库
+USE fault_warning_device;
+
+CREATE TABLE IF NOT EXISTS t_device (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    device_no VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    type VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'NORMAL',
+    location VARCHAR(100),
+    simulation_enabled BOOLEAN DEFAULT FALSE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS t_maintenance (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    device_id BIGINT NOT NULL,
+    alert_id BIGINT,
+    type VARCHAR(50),
+    fault_category VARCHAR(20),
+    description VARCHAR(500),
+    action_taken VARCHAR(500),
+    operator_id BIGINT,
+    repaired_at DATETIME,
+    status VARCHAR(20) DEFAULT 'PENDING',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 告警库
+USE fault_warning_alert;
+
+CREATE TABLE IF NOT EXISTS t_alert (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    device_id BIGINT,
+    device_name VARCHAR(100),
+    fault_probability DECIMAL(10,4),
+    alert_level VARCHAR(20),
+    type VARCHAR(50),
+    message VARCHAR(500),
+    resolved BOOLEAN DEFAULT FALSE,
+    resolved_at DATETIME,
+    resolved_by BIGINT,
+    resolve_note VARCHAR(500),
+    previous_level VARCHAR(20),
+    upgraded_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS t_config (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    config_key VARCHAR(50) NOT NULL UNIQUE,
+    value VARCHAR(255) NOT NULL,
+    description VARCHAR(255),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 示例数据初始化
 -- ============================================================
 
 USE fault_warning_user;
@@ -51,7 +127,7 @@ FROM fault_warning_device.t_device d WHERE d.device_no = 'DEV006';
 -- 删除配置
 DELETE FROM t_config;
 -- 插入初始配置
-INSERT INTO t_config (`key`, value) VALUES
+INSERT INTO t_config (config_key, value) VALUES
 ('fault_threshold', '0.7'),
 ('check_interval', '10000'),
 ('alert_retention_days', '30');
@@ -95,7 +171,7 @@ ALTER TABLE t_alert ADD COLUMN previous_level VARCHAR(20);
 ALTER TABLE t_alert ADD COLUMN upgraded_at DATETIME;
 
 -- 添加告警升级配置
-INSERT INTO t_config (`key`, value, description) VALUES
+INSERT INTO t_config (config_key, value, description) VALUES
 ('alert.upgrade.info.hours', '24', 'INFO级告警升级时间(小时)'),
 ('alert.upgrade.warning.hours', '4', 'WARNING级告警升级时间(小时)'),
 ('alert.upgrade.critical.hours', '1', 'CRITICAL级告警升级时间(小时)');

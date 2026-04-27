@@ -18,9 +18,12 @@ import reactor.core.publisher.Mono;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Component
 public class JwtAuthFilter implements GlobalFilter, Ordered {
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthFilter.class);
 
     @Value("${jwt.secret}")
     private String secret;
@@ -30,7 +33,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             "/api/user/register",
             "/api/auth/login",
             "/api/auth/register",
-            "/api/ml/"
+            "/api/ml/health",
+            "/ws/"
     );
 
     private SecretKey getSigningKey() {
@@ -42,24 +46,24 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getPath().value();
 
-        System.out.println("JWT Filter - Path: " + path);
+        log.info("JWT Filter - Path: {}", path);
 
         if (isWhiteListed(path)) {
-            System.out.println("JWT Filter - Path is whitelisted: " + path);
+            log.info("JWT Filter - Path is whitelisted: {}", path);
             return chain.filter(exchange);
         }
 
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        System.out.println("JWT Filter - Auth header: " + authHeader);
+        log.info("JWT Filter - Auth header: {}", authHeader);
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            System.out.println("JWT Filter - No valid auth header for path: " + path);
+            log.info("JWT Filter - No valid auth header for path: {}", path);
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
 
         String token = authHeader.substring(7);
-        System.out.println("JWT Filter - Token: " + token.substring(0, Math.min(20, token.length())) + "...");
+        log.info("JWT Filter - Token: {}", token.substring(0, Math.min(20, token.length())));
 
         try {
             Claims claims = Jwts.parser()
@@ -73,7 +77,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             Object userIdClaim = claims.get("userId");
             String userId = userIdClaim != null ? userIdClaim.toString() : "0";
 
-            System.out.println("JWT Filter - Valid token for user: " + username + ", role: " + role + ", userId: " + userId);
+            log.info("JWT Filter - Valid token for user: {}, role: {}, userId: {}", username, role, userId);
 
             ServerHttpRequest modifiedRequest = request.mutate()
                     .header("X-User-Name", username)
@@ -84,7 +88,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange.mutate().request(modifiedRequest).build());
 
         } catch (Exception e) {
-            System.out.println("JWT Filter - Token validation failed: " + e.getMessage());
+            log.error("JWT Filter - Token validation failed: {}", e.getMessage());
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }

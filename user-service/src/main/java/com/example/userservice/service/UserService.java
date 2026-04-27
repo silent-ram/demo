@@ -74,7 +74,7 @@ public class UserService {
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setRole("OPERATOR");
+        user.setRole(request.getRole() != null ? request.getRole() : "OPERATOR");
 
         userMapper.insert(user);
         log.info("用户注册成功: username={}", user.getUsername());

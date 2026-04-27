@@ -19,6 +19,8 @@ import com.example.alertservice.feign.DeviceServiceClient;
 import com.example.alertservice.feign.MlServiceClient;
 import com.example.alertservice.feign.UserServiceClient;
 import com.example.alertservice.handler.AlertWebSocketHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -33,6 +35,7 @@ import java.util.Map;
 
 @Service
 public class AlertService extends ServiceImpl<AlertMapper, Alert> {
+    private static final Logger log = LoggerFactory.getLogger(AlertService.class);
 
     @Autowired
     private AlertMapper alertMapper;
@@ -75,12 +78,10 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
 
         for (Alert alert : unresolvedAlerts) {
             try {
-                // 从告警消息中提取故障概率
-                String message = alert.getMessage();
+                // 直接从字段读取故障概率，避免解析消息文本出错
                 Double probability = null;
-                if (message != null && message.contains("故障概率:")) {
-                    String numStr = message.replaceAll("[^0-9.]", "");
-                    probability = Double.parseDouble(numStr);
+                if (alert.getFaultProbability() != null) {
+                    probability = alert.getFaultProbability().doubleValue();
                 }
 
                 if (probability != null && probability >= 0.7) {
@@ -98,6 +99,9 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
      */
     private void upgradeAlertLevel(Alert alert) {
         String currentLevel = alert.getAlertLevel();
+        if (currentLevel == null) {
+            return;
+        }
         String nextLevel = null;
 
         switch (currentLevel) {
@@ -134,12 +138,11 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         String alertType = alertDTO.getType();
 
         if (deviceId != null && alertType != null) {
-            // 查询30分钟内的同设备同类型未解决告警
+            // 查询同设备同类型的未解决告警（不限制时间，只要未解决就合并）
             QueryWrapper<Alert> wrapper = new QueryWrapper<>();
             wrapper.eq("device_id", deviceId);
             wrapper.eq("type", alertType);
             wrapper.eq("resolved", false);
-            wrapper.ge("created_at", LocalDateTime.now().minusMinutes(30));
 
             Alert existingAlert = alertMapper.selectOne(wrapper);
             if (existingAlert != null) {
@@ -149,12 +152,13 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
                 existingAlert.setUpdatedAt(LocalDateTime.now());
                 alertMapper.updateById(existingAlert);
                 // 不发送WebSocket，只更新现有告警
-                System.out.println("Alert merged for device: " + deviceId + ", type: " + alertType);
+                log.info("Alert merged for device: {}, type: {}", deviceId, alertType);
                 return;
             }
         }
 
         // 无合并告警，创建新告警
+        log.info("Creating new alert for device: {}, type: {}, probability: {}", deviceId, alertType, alertDTO.getFaultProbability());
         Alert alert = new Alert();
         alert.setDeviceId(deviceId);
         alert.setDeviceName(alertDTO.getDeviceName());
@@ -167,6 +171,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         alert.setUpdatedAt(LocalDateTime.now());
 
         alertMapper.insert(alert);
+        log.info("New alert created with id: {}", alert.getId());
 
         messagingTemplate.convertAndSend("/topic/alerts", alert);
 
@@ -174,14 +179,14 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         try {
             alertWebSocketHandler.broadcastAlert(alert);
         } catch (Exception e) {
-            System.err.println("WebSocket广播失败: " + e.getMessage());
+            log.error("WebSocket广播失败", e);
         }
 
         // 发送消息通知给所有管理员
         try {
             sendMessageToAdmins(alert);
         } catch (Exception e) {
-            System.err.println("发送消息通知失败: " + e.getMessage());
+            log.error("发送消息通知失败", e);
         }
     }
 
@@ -205,7 +210,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
                 }
             }
         } catch (Exception e) {
-            System.err.println("获取用户列表失败: " + e.getMessage());
+            log.error("获取用户列表失败", e);
         }
     }
 
@@ -268,9 +273,9 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
 
                 try {
                     deviceServiceClient.createMaintenance(maintenance);
-                    System.out.println("Maintenance record created for alert: " + id);
+                    log.info("Maintenance record created for alert: {}", id);
                 } catch (Exception e) {
-                    System.err.println("Failed to create maintenance record: " + e.getMessage());
+                    log.error("Failed to create maintenance record", e);
                 }
             } else if ("STOPPED".equals(resolveType)) {
                 // 停机：更新设备状态为离线，并创建维修记录
@@ -290,7 +295,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
                 try {
                     deviceServiceClient.createMaintenance(maintenance);
                 } catch (Exception e) {
-                    System.err.println("Failed to create maintenance record: " + e.getMessage());
+                    log.error("Failed to create maintenance record", e);
                 }
             } else if ("PENDING".equals(resolveType)) {
                 // 待维修：创建待处理的维修记录，用户后续可继续处理
@@ -308,7 +313,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
                 try {
                     deviceServiceClient.createMaintenance(maintenance);
                 } catch (Exception e) {
-                    System.err.println("Failed to create maintenance record: " + e.getMessage());
+                    log.error("Failed to create maintenance record", e);
                 }
             }
         }
@@ -379,32 +384,38 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
 
     public Map<String, Object> getAlertStats() {
         Map<String, Object> stats = new java.util.HashMap<>();
-        
+
         QueryWrapper<Alert> activeWrapper = new QueryWrapper<>();
         activeWrapper.eq("resolved", false);
         Long activeCount = alertMapper.selectCount(activeWrapper);
         stats.put("activeCount", activeCount);
-        
+
         QueryWrapper<Alert> resolvedWrapper = new QueryWrapper<>();
         resolvedWrapper.eq("resolved", true);
         Long resolvedCount = alertMapper.selectCount(resolvedWrapper);
         stats.put("resolvedCount", resolvedCount);
-        
+
         QueryWrapper<Alert> highWrapper = new QueryWrapper<>();
         highWrapper.eq("alert_level", "HIGH");
         Long highCount = alertMapper.selectCount(highWrapper);
         stats.put("highCount", highCount);
-        
+
         QueryWrapper<Alert> mediumWrapper = new QueryWrapper<>();
         mediumWrapper.eq("alert_level", "MEDIUM");
         Long mediumCount = alertMapper.selectCount(mediumWrapper);
         stats.put("mediumCount", mediumCount);
-        
+
         QueryWrapper<Alert> lowWrapper = new QueryWrapper<>();
         lowWrapper.eq("alert_level", "LOW");
         Long lowCount = alertMapper.selectCount(lowWrapper);
         stats.put("lowCount", lowCount);
-        
+
+        // 今日告警数
+        QueryWrapper<Alert> todayWrapper = new QueryWrapper<>();
+        todayWrapper.ge("created_at", java.time.LocalDate.now().atStartOfDay());
+        Long todayCount = alertMapper.selectCount(todayWrapper);
+        stats.put("todayCount", todayCount);
+
         return stats;
     }
 
@@ -420,20 +431,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
     }
 
     public String getChart(Long deviceId) {
-        // 先获取最新传感器数据
-        MetricDTO metric = collectorServiceClient.getLatestMetric(deviceId.toString());
-        if (metric == null) {
-            return null;
-        }
-
-        PredictRequest request = new PredictRequest();
-        request.setDeviceId(deviceId.toString());
-        request.setTemperature(metric.getTemperature());
-        request.setVibration(metric.getVibration());
-        request.setPressure(metric.getPressure());
-
-        PredictResponse response = mlServiceClient.predict(request);
-        return response.getChartData();
+        return getChartBase64(deviceId);
     }
 
     public String getChartBase64(Long deviceId) {
@@ -449,7 +447,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
             }
             return null;
         } catch (Exception e) {
-            System.err.println("获取趋势图失败: " + e.getMessage());
+            log.error("获取趋势图失败", e);
             return null;
         }
     }

@@ -41,8 +41,8 @@ public class CollectorController {
 
     @GetMapping("/latest/{deviceId}")
     @Operation(summary = "获取最新指标", description = "获取指定设备的最新传感器指标")
-    public MetricDTO getLatestMetric(@PathVariable String deviceId) {
-        return influxDBService.getLatestMetric(deviceId);
+    public Result<MetricDTO> getLatestMetric(@PathVariable String deviceId) {
+        return Result.success(influxDBService.getLatestMetric(deviceId));
     }
 
     @GetMapping("/metrics")
@@ -212,11 +212,11 @@ public class CollectorController {
 
     @GetMapping("/simulate/device/{deviceId}/mode")
     @Operation(summary = "获取设备模拟模式", description = "获取指定设备的当前模拟模式")
-    public Map<String, Object> getDeviceMode(@PathVariable String deviceId) {
+    public Result<Map<String, Object>> getDeviceMode(@PathVariable String deviceId) {
         Map<String, Object> result = new HashMap<>();
         result.put("deviceId", deviceId);
         result.put("mode", sensorSimulator.getDeviceMode(deviceId));
         result.put("running", sensorSimulator.isDeviceRunning(deviceId));
-        return result;
+        return Result.success(result);
     }
 }

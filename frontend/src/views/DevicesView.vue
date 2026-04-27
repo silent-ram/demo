@@ -3,46 +3,62 @@
     <el-card shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>设备列表</span>
-          <el-button type="success" @click="handleExport">
-            <el-icon><Download /></el-icon>
-            导出
-          </el-button>
-          <el-button v-if="userStore.role === 'ADMIN'" type="primary" @click="handleAdd">
-            <el-icon><Plus /></el-icon>
-            新增设备
-          </el-button>
+          <span class="title">设备列表</span>
+          <div class="header-actions">
+            <el-button type="success" @click="handleExport">
+              <el-icon><Download /></el-icon>
+              导出
+            </el-button>
+            <el-button v-if="userStore.role === 'ADMIN'" type="primary" @click="handleAdd">
+              <el-icon><Plus /></el-icon>
+              新增设备
+            </el-button>
+          </div>
         </div>
       </template>
-      
+
       <el-table :data="deviceList" v-loading="loading" stripe>
-        <el-table-column prop="deviceNo" label="设备编号" width="150" />
-        <el-table-column prop="name" label="设备名称" />
+        <el-table-column prop="deviceNo" label="设备编号" width="150">
+          <template #default="{ row }">
+            <span class="mono-text">{{ row.deviceNo }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="name" label="设备名称">
+          <template #default="{ row }">
+            <div class="device-name-cell">
+              <el-icon class="device-icon"><Monitor /></el-icon>
+              <span>{{ row.name }}</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="type" label="设备类型" width="120" />
         <el-table-column prop="location" label="安装位置" />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+            <el-tag :type="getStatusType(row.status)" size="small">
+              {{ getStatusText(row.status) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="250">
           <template #default="{ row }">
-            <el-button v-if="row.status === 'OFFLINE' || row.status === 'STANDBY'" type="success" link @click="handleStart(row)">启动</el-button>
-            <el-button v-else-if="row.status === 'NORMAL' || row.status === 'RUNNING'" type="warning" link @click="handleStop(row)">停机</el-button>
-            <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
-            <el-button v-if="userStore.role === 'ADMIN'" type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="userStore.role === 'ADMIN'" type="danger" link @click="handleDelete(row)">删除</el-button>
+            <div class="action-buttons">
+              <el-button v-if="row.status === 'OFFLINE' || row.status === 'STANDBY'" type="success" link @click="handleStart(row)">启动</el-button>
+              <el-button v-else-if="row.status === 'NORMAL' || row.status === 'RUNNING'" type="warning" link @click="handleStop(row)">停机</el-button>
+              <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
+              <el-button v-if="userStore.role === 'ADMIN'" type="primary" link @click="handleEdit(row)">编辑</el-button>
+              <el-button v-if="userStore.role === 'ADMIN'" type="danger" link @click="handleDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
-      
+
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.size"
         :total="pagination.total"
         :page-sizes="[10, 20, 50]"
         layout="total, sizes, prev, pager, next"
-        style="margin-top: 20px; justify-content: flex-end;"
         @size-change="loadDevices"
         @current-change="loadDevices"
       />
@@ -151,7 +167,6 @@ async function handleDelete(row) {
 async function handleStart(row) {
   try {
     await updateDeviceStatus(row.id, 'RUNNING')
-    // 设备启动时自动开启模拟
     await updateDeviceSimulation(row.id, true)
     ElMessage.success('设备已启动')
     loadDevices()
@@ -163,7 +178,6 @@ async function handleStart(row) {
 async function handleStop(row) {
   try {
     await updateDeviceStatus(row.id, 'OFFLINE')
-    // 设备停机时自动停止模拟
     await updateDeviceSimulation(row.id, false)
     ElMessage.success('设备已停机')
     loadDevices()
@@ -214,7 +228,7 @@ async function handleExport() {
 function getStatusType(status) {
   const map = {
     'NORMAL': 'success',
-    'RUNNING': 'primary',
+    'RUNNING': 'success',
     'STANDBY': 'info',
     'MAINTENANCE': 'warning',
     'FAULT': 'danger',
@@ -245,5 +259,42 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.title {
+  font-family: 'Playfair Display', 'Noto Serif SC', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #2d2a26;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.device-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.device-icon {
+  color: #0077b6;
+}
+
+.mono-text {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: #5c5750;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+:deep(.el-pagination) {
+  margin-top: 20px;
 }
 </style>

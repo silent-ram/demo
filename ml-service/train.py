@@ -82,14 +82,24 @@ def train_model():
     joblib.dump(scaler, SCALER_PATH)
     print(f'\n模型已保存到: {MODEL_PATH}')
     print(f'标准化器已保存到: {SCALER_PATH}')
-    
-    return {
+
+    metrics = {
         'accuracy': accuracy,
         'precision': precision,
         'recall': recall,
-        'f1': f1,
-        'roc_auc': roc_auc
+        'f1_score': f1,
+        'roc_auc': roc_auc,
+        'training_samples': len(df),
+        'model_loaded': True
     }
+
+    import json
+    metrics_path = os.path.join(MODEL_DIR, 'metrics.json')
+    with open(metrics_path, 'w') as f:
+        json.dump(metrics, f)
+    print(f'指标已保存到: {metrics_path}')
+
+    return metrics
 
 if __name__ == '__main__':
     metrics = train_model()

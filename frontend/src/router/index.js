@@ -69,12 +69,6 @@ const routes = [
         meta: { title: '用户管理', requiresAdmin: true }
       },
       {
-        path: 'sensor-config',
-        name: 'SensorConfig',
-        component: () => import('@/views/SensorConfigView.vue'),
-        meta: { title: '传感器配置', requiresAdmin: true }
-      },
-      {
         path: 'alert-statistics',
         name: 'AlertStatistics',
         component: () => import('@/views/AlertStatisticsView.vue'),

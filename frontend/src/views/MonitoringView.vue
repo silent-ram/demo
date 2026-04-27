@@ -2,43 +2,69 @@
   <div class="monitoring">
     <el-row :gutter="20">
       <el-col v-for="device in deviceList" :key="device.id" :span="6">
-        <el-card shadow="hover" class="device-card clickable" :class="{ 'warning-card': device.faultProbability >= 0.7 }" @click="goToDetail(device.id)">
+        <div
+          class="device-card"
+          :class="{ 'warning-card': device.faultProbability >= 0.7, 'danger-card': device.faultProbability >= 0.9 }"
+          @click="goToDetail(device.id)"
+        >
           <div class="device-header">
-            <el-icon size="24"><Monitor /></el-icon>
+            <div class="device-icon-wrap">
+              <el-icon size="22"><Monitor /></el-icon>
+            </div>
             <span class="device-name">{{ device.name }}</span>
           </div>
+
           <div class="device-info">
-            <p>编号：{{ device.deviceNo }}</p>
-            <p>类型：{{ device.type }}</p>
+            <p class="info-item">
+              <span class="info-label">编号</span>
+              <span class="info-value mono-text">{{ device.deviceNo }}</span>
+            </p>
+            <p class="info-item">
+              <span class="info-label">类型</span>
+              <span class="info-value">{{ device.type || '--' }}</span>
+            </p>
           </div>
-          <div class="fault-probability">
-            <span>故障概率</span>
-            <el-progress
-              :percentage="device.faultProbability * 100"
-              :color="getProgressColor(device.faultProbability)"
-              :format="() => (device.faultProbability * 100).toFixed(1) + '%'"
-            />
+
+          <div class="fault-section">
+            <div class="fault-header">
+              <span class="fault-label">故障概率</span>
+              <span class="fault-value" :class="getFaultClass(device.faultProbability)">
+                {{ (device.faultProbability * 100).toFixed(1) }}%
+              </span>
+            </div>
+            <div class="fault-bar">
+              <div
+                class="fault-bar-fill"
+                :style="{ width: (device.faultProbability * 100) + '%' }"
+              ></div>
+            </div>
           </div>
+
           <div class="metrics">
             <div class="metric-item">
-              <el-icon><Sunset /></el-icon>
-              <span>{{ device.temperature?.toFixed(1) || '--' }}°C</span>
+              <el-icon class="metric-icon temp"><Sunset /></el-icon>
+              <span class="metric-value">{{ device.temperature?.toFixed(1) || '--' }}</span>
+              <span class="metric-unit">°C</span>
             </div>
             <div class="metric-item">
-              <el-icon><Stopwatch /></el-icon>
-              <span>{{ device.vibration?.toFixed(2) || '--' }} mm/s</span>
+              <el-icon class="metric-icon vib"><Operation /></el-icon>
+              <span class="metric-value">{{ device.vibration?.toFixed(2) || '--' }}</span>
+              <span class="metric-unit">mm/s</span>
             </div>
             <div class="metric-item">
-              <el-icon><Odometer /></el-icon>
-              <span>{{ device.pressure?.toFixed(2) || '--' }} MPa</span>
+              <el-icon class="metric-icon pres"><Odometer /></el-icon>
+              <span class="metric-value">{{ device.pressure?.toFixed(2) || '--' }}</span>
+              <span class="metric-unit">MPa</span>
             </div>
           </div>
-          <div class="device-status">
+
+          <div class="device-footer">
             <el-tag :type="getStatusType(device.status)" size="small">
               {{ getStatusText(device.status) }}
             </el-tag>
+            <span class="view-detail">查看详情 →</span>
           </div>
-        </el-card>
+        </div>
       </el-col>
     </el-row>
   </div>
@@ -49,15 +75,15 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElNotification } from 'element-plus'
 import { getDeviceList, getMaintenancesByDevice } from '@/api/device'
-
-const router = useRouter()
 import { getLatestMetric } from '@/api/collector'
 import { useAlertStore } from '@/stores/alert'
 
+const router = useRouter()
 const alertStore = useAlertStore()
 const deviceList = ref([])
 let ws = null
 let refreshTimer = null
+const notifiedAlertIds = new Set()
 
 async function loadDevices() {
   try {
@@ -68,7 +94,7 @@ async function loadDevices() {
       try {
         const metricRes = await getLatestMetric(device.id)
         const metricData = metricRes.data || metricRes
-        device.faultProbability = metricData.faultProbability || metricData.faultProbability || 0
+        device.faultProbability = metricData.faultProbability || 0
         device.temperature = metricData.temperature
         device.vibration = metricData.vibration
         device.pressure = metricData.pressure
@@ -84,20 +110,33 @@ async function loadDevices() {
 }
 
 function connectWebSocket() {
-  ws = new WebSocket('ws://localhost:8084/ws/alert')
-  
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return
+  }
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsPort = window.location.hostname === 'localhost' ? '8080' : window.location.port
+  const wsHost = window.location.hostname + ':' + wsPort
+  ws = new WebSocket(`${wsProtocol}//${wsHost}/ws/alert`)
+
   ws.onopen = () => {
-    console.log('WebSocket 连接成功')
     alertStore.setWsConnected(true)
   }
-  
+
   ws.onmessage = async (event) => {
-    console.log('收到告警消息:', event.data)
     try {
       const alert = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
+      const alertId = alert.id || alert.deviceId + '_' + alert.createdAt
+
+      // 跨标签页去重：使用 localStorage 保证所有标签页共享同一状态
+      const storageKey = 'alert_notified_' + alertId
+      if (localStorage.getItem(storageKey)) {
+        return
+      }
+      localStorage.setItem(storageKey, Date.now().toString())
+      setTimeout(() => localStorage.removeItem(storageKey), 5 * 60 * 1000)
+
       const prob = (alert.faultProbability * 100 || 0).toFixed(1)
 
-      // 获取相关维修记录
       let maintenanceInfo = ''
       if (alert.deviceId) {
         try {
@@ -118,46 +157,53 @@ function connectWebSocket() {
         title: '【' + alert.alertLevel + '级告警】' + alert.deviceName,
         message: '故障概率: ' + prob + '%\n告警类型: ' + (alert.type || '未知') + '\n消息: ' + (alert.message || '无') + maintenanceInfo,
         type: 'warning',
-        duration: 0,
+        duration: 10000,
         showClose: true
       })
       loadDevices()
     } catch (e) {
       console.error('解析告警消息失败:', e)
-      ElNotification({
-        title: '新告警',
-        message: event.data,
-        type: 'warning',
-        duration: 5000
-      })
     }
   }
-  
+
   ws.onerror = (error) => {
     console.error('WebSocket 错误:', error)
     alertStore.setWsConnected(false)
   }
-  
+
   ws.onclose = () => {
-    console.log('WebSocket 连接关闭')
     alertStore.setWsConnected(false)
     setTimeout(connectWebSocket, 5000)
   }
 }
 
-function getProgressColor(probability) {
-  if (probability >= 0.9) return '#F56C6C'
-  if (probability >= 0.7) return '#E6A23C'
-  return '#67C23A'
+function getFaultClass(probability) {
+  if (probability >= 0.9) return 'danger'
+  if (probability >= 0.7) return 'warning'
+  return 'normal'
 }
 
 function getStatusType(status) {
-  const map = { 'NORMAL': 'success', 'RUNNING': 'primary', 'STANDBY': 'info', 'MAINTENANCE': 'warning', 'FAULT': 'danger', 'OFFLINE': 'info' }
+  const map = {
+    'NORMAL': 'success',
+    'RUNNING': 'success',
+    'STANDBY': 'info',
+    'MAINTENANCE': 'warning',
+    'FAULT': 'danger',
+    'OFFLINE': 'info'
+  }
   return map[status] || 'info'
 }
 
 function getStatusText(status) {
-  const map = { 'NORMAL': '正常运行', 'RUNNING': '运行中', 'STANDBY': '待机', 'MAINTENANCE': '维护中', 'FAULT': '故障', 'OFFLINE': '离线' }
+  const map = {
+    'NORMAL': '正常运行',
+    'RUNNING': '运行中',
+    'STANDBY': '待机',
+    'MAINTENANCE': '维护中',
+    'FAULT': '故障',
+    'OFFLINE': '离线'
+  }
   return map[status] || status
 }
 
@@ -168,7 +214,6 @@ function goToDetail(deviceId) {
 onMounted(() => {
   loadDevices()
   connectWebSocket()
-  // 每 5 秒刷新一次实时数据
   refreshTimer = setInterval(loadDevices, 5000)
 })
 
@@ -183,76 +228,185 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.monitoring {
+  padding: 4px;
+}
+
 .device-card {
+  background: white;
+  border: 1px solid rgba(45, 42, 38, 0.08);
+  border-radius: 16px;
+  padding: 20px;
   margin-bottom: 20px;
-  transition: all 0.3s;
-}
-
-.device-card.clickable {
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(45, 42, 38, 0.04);
+  transition: all 0.3s ease;
 }
 
-.device-card.clickable:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+.device-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 35px rgba(45, 42, 38, 0.12);
 }
 
 .device-card.warning-card {
-  border-color: #E6A23C;
-  box-shadow: 0 0 10px rgba(230, 162, 60, 0.3);
+  border-color: rgba(244, 162, 97, 0.4);
+}
+
+.device-card.danger-card {
+  border-color: rgba(214, 40, 40, 0.4);
 }
 
 .device-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 15px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.device-icon-wrap {
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, rgba(0, 119, 182, 0.1), rgba(0, 168, 232, 0.08));
+  border: 1px solid rgba(0, 119, 182, 0.15);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0077b6;
 }
 
 .device-name {
   font-size: 16px;
-  font-weight: bold;
+  font-weight: 600;
+  color: #2d2a26;
 }
 
 .device-info {
+  margin-bottom: 16px;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.info-label {
+  color: #9a948c;
+}
+
+.info-value {
+  color: #5c5750;
+}
+
+.mono-text {
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
-  color: #909399;
-  margin-bottom: 15px;
 }
 
-.device-info p {
-  margin: 5px 0;
+.fault-section {
+  margin-bottom: 16px;
 }
 
-.fault-probability {
-  margin-bottom: 15px;
+.fault-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
-.fault-probability span {
+.fault-label {
   font-size: 12px;
-  color: #606266;
-  margin-bottom: 5px;
-  display: block;
+  color: #9a948c;
+}
+
+.fault-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.fault-value.normal { color: #2d936c; }
+.fault-value.warning { color: #e85d04; }
+.fault-value.danger { color: #d62828; }
+
+.fault-bar {
+  height: 6px;
+  background: #f0f0f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.fault-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+  background: linear-gradient(90deg, #2d936c, #3da87a);
+}
+
+.warning-card .fault-bar-fill {
+  background: linear-gradient(90deg, #f4a261, #e89b3d);
+}
+
+.danger-card .fault-bar-fill {
+  background: linear-gradient(90deg, #d62828, #e63939);
 }
 
 .metrics {
   display: flex;
   justify-content: space-around;
-  padding: 10px 0;
-  border-top: 1px solid #EBEEF5;
-  border-bottom: 1px solid #EBEEF5;
-  margin-bottom: 15px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(45, 42, 38, 0.06);
+  border-bottom: 1px solid rgba(45, 42, 38, 0.06);
+  margin-bottom: 14px;
 }
 
 .metric-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
+  gap: 4px;
 }
 
-.device-status {
-  text-align: center;
+.metric-icon {
+  font-size: 16px;
+  margin-bottom: 2px;
+}
+
+.metric-icon.temp { color: #f4a261; }
+.metric-icon.vib { color: #0077b6; }
+.metric-icon.pres { color: #e85d04; }
+
+.metric-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d2a26;
+}
+
+.metric-unit {
+  font-size: 10px;
+  color: #9a948c;
+}
+
+.device-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.view-detail {
+  font-size: 12px;
+  color: #0077b6;
+  transition: all 0.25s ease;
+}
+
+.device-card:hover .view-detail {
+  color: #e85d04;
+  transform: translateX(3px);
 }
 </style>

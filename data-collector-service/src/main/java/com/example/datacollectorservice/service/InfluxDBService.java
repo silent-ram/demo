@@ -11,6 +11,8 @@ import com.influxdb.client.domain.WritePrecision;
 import com.influxdb.client.write.Point;
 import com.influxdb.query.FluxRecord;
 import com.influxdb.query.FluxTable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,8 @@ import java.util.List;
 
 @Service
 public class InfluxDBService {
+
+    private static final Logger log = LoggerFactory.getLogger(InfluxDBService.class);
 
     @Autowired
     private InfluxDBClient influxDBClient;
@@ -50,12 +54,11 @@ public class InfluxDBService {
         try (WriteApi writeApi = influxDBClient.getWriteApi()) {
             writeApi.writePoint(bucket, org, point);
         }
-        System.out.println("Metric written to InfluxDB: " + metric.getDeviceId() + " - " + metric.getMetricName() + " = " + metric.getValue());
+        log.info("Metric written to InfluxDB: {} - {} = {}", metric.getDeviceId(), metric.getMetricName(), metric.getValue());
     }
 
     public void writeMetrics(List<MetricDTO> metrics) {
-        System.out.println("Attempting to write " + metrics.size() + " metrics to InfluxDB...");
-        System.out.println("InfluxDB Config - URL: " + url + ", Org: " + org + ", Bucket: " + bucket);
+        log.info("Attempting to write {} metrics to InfluxDB", metrics.size());
 
         List<Point> points = new ArrayList<>();
         for (MetricDTO metric : metrics) {
@@ -70,10 +73,9 @@ public class InfluxDBService {
 
         try (WriteApi writeApi = influxDBClient.getWriteApi()) {
             writeApi.writePoints(bucket, org, points);
-            System.out.println("Batch metrics written to InfluxDB: " + metrics.size() + " records");
+            log.info("Batch metrics written to InfluxDB: {} records", metrics.size());
         } catch (Exception e) {
-            System.err.println("Error writing to InfluxDB: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Error writing to InfluxDB", e);
             throw e;
         }
     }
@@ -158,15 +160,15 @@ public class InfluxDBService {
     }
 
     public MetricDTO getLatestMetric(String deviceId) {
-        System.out.println("=== getLatestMetric called for device: " + deviceId + " ===");
+        log.debug("getLatestMetric called for device: {}", deviceId);
         List<MetricDTO> metrics = getLatestMetricsForDevice(deviceId);
 
         if (metrics == null || metrics.isEmpty()) {
-            System.out.println("No metrics found for device: " + deviceId);
+            log.warn("No metrics found for device: {}", deviceId);
             return null;
         }
 
-        System.out.println("Found " + metrics.size() + " metrics for device: " + deviceId);
+        log.debug("Found {} metrics for device: {}", metrics.size(), deviceId);
 
         MetricDTO result = new MetricDTO();
         result.setDeviceId(deviceId);
@@ -199,10 +201,10 @@ public class InfluxDBService {
                 PredictResponse response = mlServiceClient.predict(request);
                 if (response != null && response.getData() != null && response.getData().getFaultProbability() != null) {
                     result.setFaultProbability(response.getData().getFaultProbability());
-                    System.out.println("Prediction for device " + deviceId + ": " + response.getData().getFaultProbability());
+                    log.info("Prediction for device {}: {}", deviceId, response.getData().getFaultProbability());
                 }
             } catch (Exception e) {
-                System.err.println("Error calling ML service for device " + deviceId + ": " + e.getMessage());
+                log.error("Error calling ML service for device {}", deviceId, e);
                 result.setFaultProbability(0.0);
             }
         }
@@ -211,7 +213,7 @@ public class InfluxDBService {
     }
 
     public List<MetricDTO> getLatestMetricsForDevice(String deviceId) {
-        System.out.println("=== getLatestMetricsForDevice called for device: " + deviceId + " ===");
+        log.debug("=== getLatestMetricsForDevice called for device: {} ===", deviceId);
         // 分别查询每种指标，避免 pivot 的类型冲突问题
         String[] metricNames = {"temperature", "vibration", "pressure"};
         List<MetricDTO> results = new ArrayList<>();
@@ -250,11 +252,11 @@ public class InfluxDBService {
                     }
                 }
             } catch (Exception e) {
-                System.err.println("Error querying metric " + metricName + ": " + e.getMessage());
+                log.error("Error querying metric {} for device {}", metricName, deviceId, e);
             }
         }
 
-        System.out.println("Returning " + results.size() + " metrics for device: " + deviceId);
+        log.debug("Returning {} metrics for device: {}", results.size(), deviceId);
         return results;
     }
 
@@ -303,7 +305,7 @@ public class InfluxDBService {
 
         QueryApi queryApi = influxDBClient.getQueryApi();
         queryApi.query(flux, org);
-        System.out.println("All metrics cleared from InfluxDB");
+        log.info("All metrics cleared from InfluxDB");
     }
 
     public void clearDeviceMetrics(String deviceId) {
@@ -320,6 +322,6 @@ public class InfluxDBService {
 
         QueryApi queryApi = influxDBClient.getQueryApi();
         queryApi.query(flux, org);
-        System.out.println("Metrics cleared for device: " + deviceId);
+        log.info("Metrics cleared for device: {}", deviceId);
     }
 }

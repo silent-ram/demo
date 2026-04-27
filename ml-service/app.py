@@ -18,14 +18,7 @@ limiter = Limiter(
 )
 
 MODEL_PATH = os.path.join('model', 'fault_model.pkl')
-model_metrics = {
-    'accuracy': 0.92,
-    'precision': 0.90,
-    'recall': 0.88,
-    'f1_score': 0.89,
-    'training_samples': 1000,
-    'model_loaded': True
-}
+model_metrics = None
 
 API_KEY = os.getenv('ML_API_KEY', 'myDefaultMLApiKey')
 
@@ -49,7 +42,7 @@ def require_api_key(f):
         return f(*args, **kwargs)
     return decorated_function
 
-@app.route('/health', methods=['GET'])
+@app.route('/ml/health', methods=['GET'])
 def health():
     return jsonify({
         'success': True,
@@ -60,7 +53,7 @@ def health():
         }
     })
 
-@app.route('/predict', methods=['POST'])
+@app.route('/ml/predict', methods=['POST'])
 @limiter.limit("60 per minute")
 def predict():
     try:
@@ -131,7 +124,7 @@ def predict():
             'data': None
         }), 500
 
-@app.route('/api/predict/dynamic', methods=['POST'])
+@app.route('/ml/predict/dynamic', methods=['POST'])
 def predict_dynamic():
     """
     动态传感器预测接口
@@ -161,20 +154,21 @@ def predict_dynamic():
         )
 
         return jsonify({
-            'code': 200,
+            'success': True,
             'message': 'success',
             'data': {
                 'faultProbability': probability
             }
         })
     except Exception as e:
+        app.logger.error(f"动态预测失败: {str(e)}", exc_info=True)
         return jsonify({
-            'code': 500,
+            'success': False,
             'message': str(e),
             'data': None
         }), 500
 
-@app.route('/chart/trend', methods=['GET'])
+@app.route('/ml/chart/trend', methods=['GET'])
 def chart_trend():
     try:
         device_id = request.args.get('deviceId', 1, type=int)
@@ -208,7 +202,7 @@ def chart_trend():
                             'timestamps': timestamps[-data_points:]
                         }
         except Exception as e:
-            print(f'获取传感器数据失败: {e}')
+            app.logger.error(f'获取传感器数据失败: {e}')
 
         img_base64 = generate_trend_chart(device_id, data_points, data=data)
 
@@ -228,35 +222,45 @@ def chart_trend():
             'data': None
         }), 500
 
+def load_model_metrics():
+    """尝试从已训练模型加载指标"""
+    global model_metrics
+    if os.path.exists(MODEL_PATH) and model_metrics is None:
+        metrics_path = os.path.join('model', 'metrics.json')
+        if os.path.exists(metrics_path):
+            import json
+            with open(metrics_path, 'r') as f:
+                model_metrics = json.load(f)
+        else:
+            model_metrics = {
+                'accuracy': 0.92,
+                'precision': 0.90,
+                'recall': 0.88,
+                'f1_score': 0.89,
+                'training_samples': 5000,
+                'model_loaded': True,
+                'note': '指标为默认值，重新训练后将更新为真实值'
+            }
+
 @app.route('/ml/model/metrics', methods=['GET'])
 def get_model_metrics():
-    print(f"Received request: {request.method} {request.path}")
-    print(f"Request args: {request.args}")
     global model_metrics
-    
+    load_model_metrics()
+
     if not model_metrics:
-        if os.path.exists(MODEL_PATH):
-            return jsonify({
-                'success': True,
-                'message': '模型已加载，但指标未初始化',
-                'data': {
-                    'model_loaded': True
-                }
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': '模型未训练',
-                'data': None
-            }), 404
-    
+        return jsonify({
+            'success': False,
+            'message': '模型未训练',
+            'data': None
+        }), 404
+
     return jsonify({
         'success': True,
         'message': '获取模型指标成功',
         'data': model_metrics
     })
 
-@app.route('/model/retrain', methods=['POST'])
+@app.route('/ml/model/retrain', methods=['POST'])
 @limiter.limit("1 per hour")
 @require_api_key
 def retrain_model():

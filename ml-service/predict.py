@@ -1,6 +1,9 @@
 import joblib
+import logging
 import numpy as np
 import os
+
+logger = logging.getLogger(__name__)
 
 MODEL_DIR = 'model'
 MODEL_PATH = os.path.join(MODEL_DIR, 'fault_model.pkl')
@@ -16,13 +19,13 @@ class FaultPredictor:
         if os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH):
             self.model = joblib.load(MODEL_PATH)
             self.scaler = joblib.load(SCALER_PATH)
-            print('模型和标准化器加载成功')
+            logger.info('模型和标准化器加载成功')
         elif os.path.exists(MODEL_PATH):
             self.model = joblib.load(MODEL_PATH)
             self.scaler = None
-            print('模型加载成功，但标准化器不存在')
+            logger.info('模型加载成功，但标准化器不存在')
         else:
-            print('模型文件不存在，请先运行 train.py')
+            logger.warning('模型文件不存在，请先运行 train.py')
             self.model = None
             self.scaler = None
     

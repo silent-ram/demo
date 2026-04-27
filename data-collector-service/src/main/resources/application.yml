@@ -17,9 +17,13 @@ eureka:
 
 influxdb:
   url: ${INFLUXDB_URL:http://localhost:8086}
-  token: ${INFLUXDB_TOKEN:CexQOQRSk8eHkEaZGLWUEH9qcRtCeaxeeOGKunkU5NPPvSiZe8MuYvdRWL1CDonBcRJvZnVUWxDxuyh7OZKYqQ==}
+  token: ${INFLUXDB_TOKEN:myDefaultInfluxDBTokenForDevelopment}
   org: ${INFLUXDB_ORG:cy}
   bucket: ${INFLUXDB_BUCKET:sensor_data}
+
+ml:
+  service:
+    url: ${ML_SERVICE_URL:http://localhost:5000}
 
 logging:
   level:

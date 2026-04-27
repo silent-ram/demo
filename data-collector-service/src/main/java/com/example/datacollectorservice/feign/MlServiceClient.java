@@ -6,9 +6,9 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
-@FeignClient(name = "ml-service", url = "http://localhost:5000")
+@FeignClient(name = "ml-service", url = "${ml.service.url:http://localhost:5000}")
 public interface MlServiceClient {
 
-    @PostMapping("/predict")
+    @PostMapping("/ml/predict")
     PredictResponse predict(@RequestBody PredictRequest request);
 }

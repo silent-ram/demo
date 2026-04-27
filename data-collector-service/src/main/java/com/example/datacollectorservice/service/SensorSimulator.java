@@ -10,6 +10,8 @@ import com.example.datacollectorservice.feign.AlertServiceClient;
 import com.example.datacollectorservice.feign.DeviceServiceClient;
 import com.example.datacollectorservice.feign.MlServiceClient;
 import com.example.datacollectorservice.mapper.SensorConfigMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class SensorSimulator {
+
+    private static final Logger log = LoggerFactory.getLogger(SensorSimulator.class);
 
     private final Random random = new Random();
 
@@ -168,7 +172,7 @@ public class SensorSimulator {
             com.example.datacollectorservice.exception.Result<List<com.example.datacollectorservice.dto.DeviceDTO>> result = deviceServiceClient.getRunningDevices();
             runningDevices = (result != null && result.getData() != null) ? result.getData() : null;
         } catch (Exception e) {
-            System.err.println("Failed to get running devices: " + e.getMessage());
+            log.error("Failed to get running devices", e);
             return;
         }
 
@@ -335,13 +339,12 @@ public class SensorSimulator {
                                 }
                             }
                         } catch (Exception e) {
-                            System.err.println("ML service call failed: " + e.getMessage());
+                            log.error("ML service call failed for device {}", deviceId, e);
                         }
                     }
 
                 } catch (Exception e) {
-                    System.err.println("Failed to write metrics to InfluxDB: " + e.getMessage());
-                    e.printStackTrace();
+                    log.error("Failed to write metrics to InfluxDB for device {}", deviceId, e);
                 }
             }
         }

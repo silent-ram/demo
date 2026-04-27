@@ -3,29 +3,40 @@
     <el-card shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>用户管理</span>
+          <span class="title">用户管理</span>
           <el-button type="primary" @click="handleAdd">
             <el-icon><Plus /></el-icon>
             新增用户
           </el-button>
         </div>
       </template>
-      
+
       <el-table :data="userList" v-loading="loading" stripe>
-        <el-table-column prop="username" label="用户名" />
+        <el-table-column prop="username" label="用户名">
+          <template #default="{ row }">
+            <div class="user-cell">
+              <el-avatar :size="32">{{ row.username.charAt(0).toUpperCase() }}</el-avatar>
+              <span class="username">{{ row.username }}</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="realName" label="真实姓名" />
         <el-table-column prop="role" label="角色" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'info'">
-              {{ row.role === 'ADMIN' ? '管理员' : '运维人员' }}
-            </el-tag>
+            <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'info'" size="small">{{ row.role === 'ADMIN' ? '管理员' : '运维人员' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column prop="createdAt" label="创建时间" width="180">
+          <template #default="{ row }">
+            <span class="time-value">{{ row.createdAt }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200">
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)" :disabled="row.username === 'admin'">删除</el-button>
+            <div class="action-buttons">
+              <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
+              <el-button type="danger" link @click="handleDelete(row)" :disabled="row.username === 'admin'">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -69,13 +80,7 @@ const dialogTitle = ref('新增用户')
 const submitLoading = ref(false)
 const formRef = ref(null)
 
-const form = reactive({
-  id: null,
-  username: '',
-  password: '',
-  realName: '',
-  role: 'OPERATOR'
-})
+const form = reactive({ id: null, username: '', password: '', realName: '', role: 'OPERATOR' })
 
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -85,14 +90,9 @@ const rules = {
 
 async function loadUsers() {
   loading.value = true
-  try {
-    const res = await getUserList()
-    userList.value = res.data || []
-  } catch (error) {
-    console.error('加载用户列表失败:', error)
-  } finally {
-    loading.value = false
-  }
+  try { const res = await getUserList(); userList.value = res.data || [] }
+  catch (error) { console.error('加载用户列表失败:', error) }
+  finally { loading.value = false }
 }
 
 function handleAdd() {
@@ -109,46 +109,31 @@ function handleEdit(row) {
 
 async function handleDelete(row) {
   await ElMessageBox.confirm('确定要删除该用户吗？', '提示', { type: 'warning' })
-  try {
-    await deleteUser(row.id)
-    ElMessage.success('删除成功')
-    loadUsers()
-  } catch (error) {
-    console.error('删除失败:', error)
-  }
+  try { await deleteUser(row.id); ElMessage.success('删除成功'); loadUsers() }
+  catch (error) { console.error('删除失败:', error) }
 }
 
 async function handleSubmit() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
-
   submitLoading.value = true
   try {
-    if (form.id) {
-      await updateUser(form.id, { realName: form.realName, role: form.role })
-      ElMessage.success('更新成功')
-    } else {
-      await register({ username: form.username, password: form.password })
-      ElMessage.success('创建成功')
-    }
+    if (form.id) { await updateUser(form.id, { realName: form.realName, role: form.role }); ElMessage.success('更新成功') }
+    else { await register({ username: form.username, password: form.password, realName: form.realName, role: form.role }); ElMessage.success('创建成功') }
     dialogVisible.value = false
     loadUsers()
-  } catch (error) {
-    console.error('提交失败:', error)
-  } finally {
-    submitLoading.value = false
-  }
+  } catch (error) { console.error('提交失败:', error) }
+  finally { submitLoading.value = false }
 }
 
-onMounted(() => {
-  loadUsers()
-})
+onMounted(() => loadUsers())
 </script>
 
 <style scoped>
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+.card-header { display: flex; justify-content: space-between; align-items: center; }
+.title { font-family: 'Playfair Display', Georgia, serif; font-size: 18px; font-weight: 700; color: #2d2a26; }
+.user-cell { display: flex; align-items: center; gap: 10px; }
+.username { font-weight: 500; color: #2d2a26; }
+.time-value { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #9a948c; }
+.action-buttons { display: flex; gap: 4px; }
 </style>

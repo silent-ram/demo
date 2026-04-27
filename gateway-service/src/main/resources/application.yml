@@ -36,7 +36,11 @@ spring:
           predicates:
             - Path=/api/ml/**
           filters:
-            - StripPrefix=2
+            - StripPrefix=1
+        - id: alert-service-ws
+          uri: lb://alert-service
+          predicates:
+            - Path=/ws/**
       globalcors:
         cors-configurations:
           '[/**]':

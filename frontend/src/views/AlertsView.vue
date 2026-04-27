@@ -3,7 +3,7 @@
     <el-card shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>告警列表</span>
+          <span class="title">告警列表</span>
           <div class="filters">
             <el-select v-model="filters.level" placeholder="告警级别" clearable style="width: 120px; margin-right: 10px;">
               <el-option label="高" value="HIGH" />
@@ -17,43 +17,59 @@
           </div>
         </div>
       </template>
-      
+
       <el-table :data="alertList" v-loading="loading" stripe>
-        <el-table-column prop="deviceName" label="设备名称" width="150" />
+        <el-table-column prop="deviceName" label="设备名称" width="150">
+          <template #default="{ row }">
+            <div class="device-cell">
+              <el-icon class="device-icon"><Monitor /></el-icon>
+              <span>{{ row.deviceName }}</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="alertLevel" label="告警级别" width="100">
           <template #default="{ row }">
-            <el-tag :type="getLevelType(row.alertLevel)">{{ getLevelText(row.alertLevel) }}</el-tag>
+            <el-tag :type="getLevelType(row.alertLevel)" size="small">
+              {{ getLevelText(row.alertLevel) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="faultProbability" label="故障概率" width="120">
           <template #default="{ row }">
-            {{ (row.faultProbability * 100).toFixed(1) }}%
+            <span class="probability-value" :class="getProbabilityClass(row.faultProbability)">
+              {{ (row.faultProbability * 100).toFixed(1) }}%
+            </span>
           </template>
         </el-table-column>
         <el-table-column prop="message" label="告警信息" />
-        <el-table-column prop="createdAt" label="告警时间" width="180" />
+        <el-table-column prop="createdAt" label="告警时间" width="180">
+          <template #default="{ row }">
+            <span class="time-value">{{ row.createdAt }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="resolved" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.resolved ? 'success' : 'warning'">
+            <el-tag :type="row.resolved ? 'success' : 'warning'" size="small">
               {{ row.resolved ? '已处理' : '待处理' }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150">
           <template #default="{ row }">
-            <el-button v-if="!row.resolved" type="primary" link @click="handleResolve(row)">处理</el-button>
-            <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
+            <div class="action-buttons">
+              <el-button v-if="!row.resolved" type="primary" link @click="handleResolve(row)">处理</el-button>
+              <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
-      
+
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.size"
         :total="pagination.total"
         :page-sizes="[10, 20, 50]"
         layout="total, sizes, prev, pager, next"
-        style="margin-top: 20px; justify-content: flex-end;"
         @size-change="loadAlerts"
         @current-change="loadAlerts"
       />
@@ -69,7 +85,6 @@
           </el-radio-group>
         </el-form-item>
 
-        <!-- 去维修时显示完整表单 -->
         <template v-if="resolveForm.resolveType === 'COMPLETED'">
           <el-form-item label="维修类型" required>
             <el-select v-model="resolveForm.maintenanceType" placeholder="请选择维修类型" style="width: 100%;">
@@ -89,7 +104,6 @@
           </el-form-item>
         </template>
 
-        <!-- 待维修或停机时只显示备注 -->
         <template v-else>
           <el-form-item label="处理备注">
             <el-input v-model="resolveForm.note" type="textarea" :rows="3" placeholder="请输入处理备注" />
@@ -106,19 +120,23 @@
       <el-descriptions :column="1" border>
         <el-descriptions-item label="设备名称">{{ currentAlert.deviceName }}</el-descriptions-item>
         <el-descriptions-item label="告警级别">
-          <el-tag :type="getLevelType(currentAlert.alertLevel)">{{ getLevelText(currentAlert.alertLevel) }}</el-tag>
+          <el-tag :type="getLevelType(currentAlert.alertLevel)" size="small">{{ getLevelText(currentAlert.alertLevel) }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="故障概率">{{ (currentAlert.faultProbability * 100).toFixed(1) }}%</el-descriptions-item>
+        <el-descriptions-item label="故障概率">
+          <span class="probability-value" :class="getProbabilityClass(currentAlert.faultProbability)">
+            {{ (currentAlert.faultProbability * 100).toFixed(1) }}%
+          </span>
+        </el-descriptions-item>
         <el-descriptions-item label="告警信息">{{ currentAlert.message }}</el-descriptions-item>
         <el-descriptions-item label="告警时间">{{ currentAlert.createdAt }}</el-descriptions-item>
         <el-descriptions-item label="状态">
-          <el-tag :type="currentAlert.resolved ? 'success' : 'warning'">
+          <el-tag :type="currentAlert.resolved ? 'success' : 'warning'" size="small">
             {{ currentAlert.resolved ? '已处理' : '待处理' }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item v-if="currentAlert.resolved" label="处理备注">{{ currentAlert.resolveNote }}</el-descriptions-item>
+        <el-descriptions-item v-if="currentAlert.resolveNote" label="处理备注">{{ currentAlert.resolveNote }}</el-descriptions-item>
         <el-descriptions-item v-if="currentAlert.previousLevel" label="升级前级别">
-          <el-tag :type="getLevelType(currentAlert.previousLevel)">{{ getLevelText(currentAlert.previousLevel) }}</el-tag>
+          <el-tag :type="getLevelType(currentAlert.previousLevel)" size="small">{{ getLevelText(currentAlert.previousLevel) }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item v-if="currentAlert.upgradedAt" label="升级时间">{{ currentAlert.upgradedAt }}</el-descriptions-item>
       </el-descriptions>
@@ -183,14 +201,14 @@ async function loadAlerts() {
   try {
     const res = await getAlertList({ page: pagination.page, size: pagination.size })
     let list = res.data.records || []
-    
+
     if (filters.level) {
       list = list.filter(a => a.alertLevel === filters.level)
     }
     if (filters.resolved !== null && filters.resolved !== '') {
       list = list.filter(a => a.resolved === filters.resolved)
     }
-    
+
     alertList.value = list
     pagination.total = res.data.total || 0
     alertStore.setAlerts(list)
@@ -217,7 +235,6 @@ async function submitResolve() {
   resolveLoading.value = true
   try {
     if (resolveForm.resolveType === 'COMPLETED') {
-      // 去维修：传递完整的维修信息
       await resolveAlert(
         resolveForm.id,
         resolveForm.actionTaken || resolveForm.note,
@@ -227,7 +244,6 @@ async function submitResolve() {
         resolveForm.description
       )
     } else {
-      // 待维修或停机：只传备注
       await resolveAlert(resolveForm.id, resolveForm.note, resolveForm.resolveType)
     }
     ElMessage.success('处理成功')
@@ -246,13 +262,35 @@ function handleDetail(row) {
 }
 
 function getLevelType(level) {
-  const map = { 'EMERGENCY': 'danger', 'CRITICAL': 'danger', 'WARNING': 'warning', 'INFO': 'info' }
+  const map = {
+    'EMERGENCY': 'danger',
+    'CRITICAL': 'danger',
+    'HIGH': 'danger',
+    'WARNING': 'warning',
+    'MEDIUM': 'warning',
+    'INFO': 'info',
+    'LOW': 'info'
+  }
   return map[level] || 'info'
 }
 
 function getLevelText(level) {
-  const map = { 'EMERGENCY': '紧急', 'CRITICAL': '严重', 'WARNING': '警告', 'INFO': '提示' }
+  const map = {
+    'EMERGENCY': '紧急',
+    'CRITICAL': '严重',
+    'HIGH': '高危',
+    'WARNING': '警告',
+    'MEDIUM': '中危',
+    'INFO': '提示',
+    'LOW': '低危'
+  }
   return map[level] || level
+}
+
+function getProbabilityClass(prob) {
+  if (prob >= 0.7) return 'danger'
+  if (prob >= 0.4) return 'warning'
+  return 'normal'
 }
 
 watch(filters, () => {
@@ -272,8 +310,49 @@ onMounted(() => {
   align-items: center;
 }
 
+.title {
+  font-family: 'Playfair Display', 'Noto Serif SC', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #2d2a26;
+}
+
 .filters {
   display: flex;
   align-items: center;
+}
+
+.device-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.device-icon {
+  color: #0077b6;
+}
+
+.probability-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+}
+
+.probability-value.normal { color: #2d936c; }
+.probability-value.warning { color: #e85d04; }
+.probability-value.danger { color: #d62828; }
+
+.time-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: #9a948c;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+:deep(.el-pagination) {
+  margin-top: 20px;
 }
 </style>

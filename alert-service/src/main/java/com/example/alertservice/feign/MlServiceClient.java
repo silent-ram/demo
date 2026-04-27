@@ -10,13 +10,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.Map;
 
-@FeignClient(name = "ml-service", url = "http://localhost:5000", fallback = MlServiceFallback.class)
+@FeignClient(name = "ml-service", url = "${ml.service.url:http://localhost:5000}", fallback = MlServiceFallback.class)
 public interface MlServiceClient {
 
-    @PostMapping("/predict")
+    @PostMapping("/ml/predict")
     PredictResponse predict(@RequestBody PredictRequest request);
 
-    @GetMapping("/chart/trend")
+    @GetMapping("/ml/chart/trend")
     Map<String, Object> getTrendChart(@RequestParam("deviceId") String deviceId,
                          @RequestParam("points") int dataPoints);
 }
