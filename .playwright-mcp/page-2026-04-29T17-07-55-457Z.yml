@@ -1,0 +1,115 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e47]:
+    - complementary [ref=e48]:
+      - generic [ref=e49]:
+        - img [ref=e52]
+        - generic [ref=e54]:
+          - generic [ref=e55]: 故障预警
+          - generic [ref=e56]: Fault Warning
+      - menubar [ref=e57]:
+        - menuitem "系统首页" [ref=e59] [cursor=pointer]:
+          - img [ref=e61]
+          - generic [ref=e65]: 系统首页
+        - menuitem "实时监控" [ref=e67] [cursor=pointer]:
+          - img [ref=e69]
+          - generic [ref=e71]: 实时监控
+        - menuitem "设备管理" [ref=e73] [cursor=pointer]:
+          - img [ref=e75]
+          - generic [ref=e77]: 设备管理
+        - menuitem "告警管理" [ref=e79] [cursor=pointer]:
+          - img [ref=e81]
+          - generic [ref=e85]: 告警管理
+        - menuitem "消息中心" [ref=e87] [cursor=pointer]:
+          - img [ref=e89]
+          - generic [ref=e92]: 消息中心
+        - menuitem "维修记录" [ref=e94] [cursor=pointer]:
+          - img [ref=e96]
+          - generic [ref=e98]: 维修记录
+        - menuitem "模型管理" [ref=e100] [cursor=pointer]:
+          - img [ref=e102]
+          - generic [ref=e104]: 模型管理
+        - menuitem "告警统计" [ref=e106] [cursor=pointer]:
+          - img [ref=e108]
+          - generic [ref=e110]: 告警统计
+        - menuitem "用户管理" [ref=e112] [cursor=pointer]:
+          - img [ref=e114]
+          - generic [ref=e116]: 用户管理
+        - menuitem "操作日志" [ref=e118] [cursor=pointer]:
+          - img [ref=e120]
+          - generic [ref=e122]: 操作日志
+      - generic [ref=e126]: 连接中...
+    - generic [ref=e127]:
+      - generic [ref=e128]:
+        - navigation "面包屑" [ref=e130]:
+          - generic [ref=e131]:
+            - link "首页" [ref=e132]:
+              - img [ref=e134]
+              - text: 首页
+            - text: /
+          - link "系统首页" [ref=e137]
+        - generic [ref=e138]:
+          - generic [ref=e139]:
+            - img [ref=e141]
+            - generic [ref=e145]: 01:07:55
+          - button "A admin 管理员" [ref=e147] [cursor=pointer]:
+            - generic [ref=e148]: A
+            - generic [ref=e149]:
+              - generic [ref=e150]: admin
+              - generic [ref=e152]: 管理员
+            - img [ref=e154]
+      - main [ref=e156]:
+        - generic [ref=e157]:
+          - generic [ref=e159]:
+            - generic [ref=e160]:
+              - generic [ref=e161]: 👋
+              - heading "你好，admin" [level=2] [ref=e162]
+            - paragraph [ref=e163]:
+              - img [ref=e165]
+              - text: 2026年4月30日 · 祝您工作顺利
+          - generic [ref=e169]:
+            - generic [ref=e171]:
+              - img [ref=e174]
+              - generic [ref=e176]:
+                - generic [ref=e177]: "9"
+                - generic [ref=e178]: 在线设备
+              - generic [ref=e179]:
+                - img [ref=e181]
+                - generic [ref=e183]: 活跃
+            - generic [ref=e185]:
+              - img [ref=e188]
+              - generic [ref=e192]:
+                - generic [ref=e193]: "0"
+                - generic [ref=e194]: 今日告警
+              - generic [ref=e195]:
+                - img [ref=e197]
+                - generic [ref=e199]: 注意
+            - generic [ref=e201]:
+              - img [ref=e204]
+              - generic [ref=e207]:
+                - generic [ref=e208]: 0.0%
+                - generic [ref=e209]: 设备正常率
+              - generic [ref=e210]:
+                - img [ref=e212]
+                - generic [ref=e215]: 良好
+            - generic [ref=e217]:
+              - img [ref=e220]
+              - generic [ref=e222]:
+                - generic [ref=e223]: "1"
+                - generic [ref=e224]: 待处理告警
+              - generic [ref=e225]:
+                - img [ref=e227]
+                - generic [ref=e231]: 待处理
+          - generic [ref=e232]:
+            - generic [ref=e236]:
+              - generic [ref=e237]:
+                - img [ref=e239]
+                - generic [ref=e242]: 告警级别分布
+              - generic [ref=e244]: 实时
+            - generic [ref=e252]:
+              - generic [ref=e253]:
+                - img [ref=e255]
+                - generic [ref=e257]: 近24小时告警趋势
+              - generic [ref=e259]: 稳定
+  - alert [ref=e264]:
+    - img [ref=e266]
+    - paragraph [ref=e268]: 登录成功

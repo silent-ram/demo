@@ -33,8 +33,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             "/api/user/register",
             "/api/auth/login",
             "/api/auth/register",
-            "/api/ml/health"
-            // 注意: /ws/ 已从白名单移除，WebSocket 认证由后端自行处理
+            "/api/ml/health",
+            "/ws/"  // WebSocket 认证由后端 alert-service 自行处理，Gateway 只负责代理转发
     );
 
     private SecretKey getSigningKey() {

@@ -1,9 +1,12 @@
 package com.example.datacollectorservice.service;
 
+import com.example.datacollectorservice.dto.DeviceDTO;
 import com.example.datacollectorservice.dto.MetricDTO;
 import com.example.datacollectorservice.dto.PredictRequest;
 import com.example.datacollectorservice.dto.PredictResponse;
+import com.example.datacollectorservice.feign.DeviceServiceClient;
 import com.example.datacollectorservice.feign.MlServiceClient;
+import com.example.datacollectorservice.exception.Result;
 import com.influxdb.client.InfluxDBClient;
 import com.influxdb.client.WriteApi;
 import com.influxdb.client.QueryApi;
@@ -31,6 +34,9 @@ public class InfluxDBService {
 
     @Autowired
     private MlServiceClient mlServiceClient;
+
+    @Autowired
+    private DeviceServiceClient deviceServiceClient;
 
     @Value("${influxdb.bucket}")
     private String bucket;
@@ -189,11 +195,23 @@ public class InfluxDBService {
         // 设置时间戳为最新一条记录的时间
         result.setTimestamp(metrics.get(0).getTimestamp());
 
-        // 调用 ML 服务进行预测
+        // 调用 ML 服务进行预测（带上正确的设备类型）
         if (result.getTemperature() != null && result.getVibration() != null && result.getPressure() != null) {
             try {
+                // 从 device-service 获取设备类型
+                String deviceType = "工业机器人"; // 默认fallback
+                try {
+                    Result<DeviceDTO> deviceResult = deviceServiceClient.getDevice(Long.valueOf(deviceId));
+                    if (deviceResult != null && deviceResult.getData() != null && deviceResult.getData().getType() != null) {
+                        deviceType = deviceResult.getData().getType();
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to get device type for {}, using default", deviceId);
+                }
+
                 PredictRequest request = new PredictRequest();
                 request.setDeviceId(deviceId);
+                request.setDeviceType(deviceType);
                 request.setTemperature(result.getTemperature());
                 request.setVibration(result.getVibration());
                 request.setPressure(result.getPressure());
@@ -201,7 +219,7 @@ public class InfluxDBService {
                 PredictResponse response = mlServiceClient.predict(request);
                 if (response != null && response.getData() != null && response.getData().getFaultProbability() != null) {
                     result.setFaultProbability(response.getData().getFaultProbability());
-                    log.info("Prediction for device {}: {}", deviceId, response.getData().getFaultProbability());
+                    log.info("Prediction for device {} (type={}): {}", deviceId, deviceType, response.getData().getFaultProbability());
                 }
             } catch (Exception e) {
                 log.error("Error calling ML service for device {}", deviceId, e);

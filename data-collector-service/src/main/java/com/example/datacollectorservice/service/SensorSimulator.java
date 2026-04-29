@@ -442,15 +442,15 @@ public class SensorSimulator {
 
         // 根据状态生成值
         switch (state) {
-            case SPIKE -> {
+            case SPIKE:
                 // 短暂尖峰：温度骤升5-10度，振动+0.1-0.2
                 if ("temperature".equals(metricName)) {
                     current += 5 + random.nextDouble() * 5;
                 } else if ("vibration".equals(metricName)) {
                     current += 0.1 + random.nextDouble() * 0.1;
                 }
-            }
-            case FAULT -> {
+                break;
+            case FAULT:
                 // 渐进故障：每步缓慢劣化0.5-2.0，向阈值方向推进
                 double gap = threshold - baseline;
                 double deterioration = 0.5 + random.nextDouble() * 1.5;
@@ -458,19 +458,19 @@ public class SensorSimulator {
                 if (current < targetMax) {
                     current = Math.min(current + deterioration, targetMax + random.nextDouble() * 3);
                 }
-            }
-            case RECOVERING -> {
+                break;
+            case RECOVERING:
                 // 恢复：缓慢回到基线
                 current = current * 0.9 + baseline * 0.1 + random.nextGaussian();
-            }
-            case NORMAL, default -> {
+                break;
+            default:
                 // 正常随机游走：基线 + 缓慢漂移 + 高斯噪声
                 double noiseStd = baseline * 0.02;
                 double drift = random.nextGaussian() * baseline * 0.005;
                 current += drift + random.nextGaussian() * noiseStd;
                 // 边界保护
                 current = Math.max(0.0, Math.min(current, baseline * 1.5));
-            }
+                break;
         }
 
         currentValues.put(metricName, current);
