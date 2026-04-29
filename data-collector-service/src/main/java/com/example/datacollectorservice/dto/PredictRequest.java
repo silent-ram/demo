@@ -5,6 +5,7 @@ import java.util.Map;
 
 public class PredictRequest {
     private String deviceId;
+    private String deviceType;
     private String metricName;
     private Double value;
     private Double temperature;
@@ -22,6 +23,14 @@ public class PredictRequest {
 
     public void setDeviceId(String deviceId) {
         this.deviceId = deviceId;
+    }
+
+    public String getDeviceType() {
+        return deviceType;
+    }
+
+    public void setDeviceType(String deviceType) {
+        this.deviceType = deviceType;
     }
 
     public String getMetricName() {

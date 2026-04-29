@@ -31,6 +31,63 @@ public class SensorSimulator {
 
     private static final Logger log = LoggerFactory.getLogger(SensorSimulator.class);
 
+    /** 设备运行状态 */
+    private enum DeviceSimState { NORMAL, SPIKE, FAULT, RECOVERING }
+
+    /** 传感器基线配置 */
+    private static class SensorProfile {
+        final double baseline;
+        final double threshold;
+        SensorProfile(double baseline, double threshold) {
+            this.baseline = baseline;
+            this.threshold = threshold;
+        }
+    }
+
+    // 设备类型 -> 传感器 -> (基线, 阈值)  与 Python 端 DEVICE_PROFILES 保持一致
+    private static final Map<String, Map<String, SensorProfile>> DEVICE_PROFILES;
+    static {
+        Map<String, Map<String, SensorProfile>> profiles = new HashMap<>();
+
+        Map<String, SensorProfile> robot = new HashMap<>();
+        robot.put("temperature", new SensorProfile(65.0, 80.0));
+        robot.put("vibration",   new SensorProfile(0.25, 0.6));
+        robot.put("pressure",    new SensorProfile(100.0, 130.0));
+        profiles.put("工业机器人", robot);
+
+        Map<String, SensorProfile> cnc = new HashMap<>();
+        cnc.put("temperature", new SensorProfile(55.0, 80.0));
+        cnc.put("vibration",   new SensorProfile(0.20, 0.6));
+        cnc.put("pressure",    new SensorProfile(90.0, 130.0));
+        profiles.put("数控机床", cnc);
+
+        Map<String, SensorProfile> conveyor = new HashMap<>();
+        conveyor.put("temperature", new SensorProfile(50.0, 60.0));
+        conveyor.put("vibration",   new SensorProfile(0.30, 0.5));
+        conveyor.put("pressure",    new SensorProfile(80.0, 100.0));
+        profiles.put("输送设备", conveyor);
+
+        Map<String, SensorProfile> welder = new HashMap<>();
+        welder.put("temperature", new SensorProfile(85.0, 100.0));
+        welder.put("vibration",   new SensorProfile(0.15, 0.5));
+        welder.put("pressure",    new SensorProfile(110.0, 140.0));
+        profiles.put("焊接设备", welder);
+
+        Map<String, SensorProfile> press = new HashMap<>();
+        press.put("temperature", new SensorProfile(70.0, 90.0));
+        press.put("vibration",   new SensorProfile(0.20, 0.5));
+        press.put("pressure",    new SensorProfile(120.0, 150.0));
+        profiles.put("压力设备", press);
+
+        Map<String, SensorProfile> packer = new HashMap<>();
+        packer.put("temperature", new SensorProfile(45.0, 50.0));
+        packer.put("vibration",   new SensorProfile(0.10, 0.4));
+        packer.put("pressure",    new SensorProfile(70.0, 90.0));
+        profiles.put("包装设备", packer);
+
+        DEVICE_PROFILES = Map.copyOf(profiles);
+    }
+
     private final Random random = new Random();
 
     // 每个设备独立的运行状态
@@ -50,6 +107,13 @@ public class SensorSimulator {
 
     // 设备当前模拟模式: NORMAL(正常输出), MANUAL_INSERT(插入指定数据), RANDOM_RANGE(手动范围随机)
     private final Map<String, String> deviceModes = new ConcurrentHashMap<>();
+
+    // 设备随机游走当前值（保持连续性）
+    private final Map<String, Map<String, Double>> deviceCurrentValues = new ConcurrentHashMap<>();
+
+    // 设备连续状态机（正常/尖峰/故障/恢复）
+    private final Map<String, DeviceSimState> deviceSimStates = new ConcurrentHashMap<>();
+    private final Map<String, Integer> deviceStateCounters = new ConcurrentHashMap<>();
 
     @Autowired
     private InfluxDBService influxDBService;
@@ -236,39 +300,16 @@ public class SensorSimulator {
 
                 // 根据模式生成数据
                 if ("MANUAL_INSERT".equals(mode) && pendingValues != null && pendingValues.containsKey(metricName)) {
-                    // 插入指定数据（只用一次）
                     value = pendingValues.get(metricName);
                 } else if ("RANDOM_RANGE".equals(mode) && rangeValues != null && rangeValues.containsKey(metricName)) {
-                    // 手动范围随机生成
                     double[] range = rangeValues.get(metricName);
                     value = range[0] + random.nextDouble() * (range[1] - range[0]);
                 } else if (manualDeviceValues != null && manualDeviceValues.containsKey(metricName)) {
-                    // 手动设置持续输出
                     value = manualDeviceValues.get(metricName);
-                } else if ("NORMAL".equals(mode)) {
-                    // 正常范围输出，使用配置表阈值或默认阈值
-                    double alertThreshold = threshold != null ? threshold : getDefaultThreshold(metricName);
-                    double normalMax = alertThreshold * 0.8;  // 正常值上限为阈值的80%
-                    double faultMin = alertThreshold;  // 故障值下限为阈值
-                    boolean isFault = random.nextDouble() < 0.1;
-                    if (isFault) {
-                        value = faultMin + random.nextDouble() * 5;
-                    } else {
-                        value = normalMax * (0.3 + random.nextDouble() * 0.5);  // 正常值在30%-80%之间
-                        if (value < 0) value = 0.0;
-                    }
                 } else {
-                    // 默认正常输出
-                    double alertThreshold = threshold != null ? threshold : getDefaultThreshold(metricName);
-                    double normalMax = alertThreshold * 0.8;
-                    double faultMin = alertThreshold;
-                    boolean isFault = random.nextDouble() < 0.1;
-                    if (isFault) {
-                        value = faultMin + random.nextDouble() * 5;
-                    } else {
-                        value = normalMax * (0.3 + random.nextDouble() * 0.5);
-                        if (value < 0) value = 0.0;
-                    }
+                    // NORMAL 或默认模式：使用随机游走状态机生成
+                    value = generateSimulatedValue(deviceId, deviceType, metricName,
+                            threshold != null ? threshold : getDefaultThreshold(metricName));
                 }
 
                 MetricDTO metric = new MetricDTO(deviceId, metricName, value, unit, Instant.now());
@@ -303,6 +344,7 @@ public class SensorSimulator {
 
                         PredictRequest request = new PredictRequest();
                         request.setDeviceId(deviceId);
+                        request.setDeviceType(deviceType);
                         request.setTemperature(temperature);
                         request.setVibration(vibration);
                         request.setPressure(pressure);
@@ -348,6 +390,103 @@ public class SensorSimulator {
                 }
             }
         }
+    }
+
+    /**
+     * 基于随机游走状态机生成传感器值（与 Python 训练数据分布一致）
+     */
+    private double generateSimulatedValue(String deviceId, String deviceType, String metricName, double threshold) {
+        SensorProfile profile = getProfile(deviceType, metricName, threshold);
+        double baseline = profile.baseline;
+
+        // 初始化设备当前值
+        Map<String, Double> currentValues = deviceCurrentValues.computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>());
+        double current = currentValues.getOrDefault(metricName, baseline);
+
+        // 状态机推进
+        DeviceSimState state = deviceSimStates.getOrDefault(deviceId, DeviceSimState.NORMAL);
+        int counter = deviceStateCounters.getOrDefault(deviceId, 0);
+
+        // 每个设备的所有传感器共享同一个状态（简化：整台设备同时进入故障）
+        if (counter <= 0) {
+            // 状态切换
+            double r = random.nextDouble();
+            switch (state) {
+                case NORMAL -> {
+                    if (r < 0.05) {
+                        state = DeviceSimState.FAULT;
+                        counter = random.nextInt(25) + 15; // 15-40个点
+                    } else if (r < 0.12) {
+                        state = DeviceSimState.SPIKE;
+                        counter = random.nextInt(3) + 3; // 3-5个点
+                    }
+                }
+                case SPIKE, FAULT, RECOVERING -> {
+                    state = DeviceSimState.NORMAL;
+                    counter = 0;
+                }
+            }
+        } else {
+            counter--;
+            if (counter <= 0 && state == DeviceSimState.FAULT) {
+                state = DeviceSimState.RECOVERING;
+                counter = random.nextInt(10) + 10; // 恢复10-20个点
+            } else if (counter <= 0 && state == DeviceSimState.RECOVERING) {
+                state = DeviceSimState.NORMAL;
+                counter = 0;
+            }
+        }
+
+        deviceSimStates.put(deviceId, state);
+        deviceStateCounters.put(deviceId, counter);
+
+        // 根据状态生成值
+        switch (state) {
+            case SPIKE -> {
+                // 短暂尖峰：温度骤升5-10度，振动+0.1-0.2
+                if ("temperature".equals(metricName)) {
+                    current += 5 + random.nextDouble() * 5;
+                } else if ("vibration".equals(metricName)) {
+                    current += 0.1 + random.nextDouble() * 0.1;
+                }
+            }
+            case FAULT -> {
+                // 渐进故障：每步缓慢劣化0.5-2.0，向阈值方向推进
+                double gap = threshold - baseline;
+                double deterioration = 0.5 + random.nextDouble() * 1.5;
+                double targetMax = threshold + gap * 0.4;
+                if (current < targetMax) {
+                    current = Math.min(current + deterioration, targetMax + random.nextDouble() * 3);
+                }
+            }
+            case RECOVERING -> {
+                // 恢复：缓慢回到基线
+                current = current * 0.9 + baseline * 0.1 + random.nextGaussian();
+            }
+            case NORMAL, default -> {
+                // 正常随机游走：基线 + 缓慢漂移 + 高斯噪声
+                double noiseStd = baseline * 0.02;
+                double drift = random.nextGaussian() * baseline * 0.005;
+                current += drift + random.nextGaussian() * noiseStd;
+                // 边界保护
+                current = Math.max(0.0, Math.min(current, baseline * 1.5));
+            }
+        }
+
+        currentValues.put(metricName, current);
+        return current;
+    }
+
+    /**
+     * 获取设备类型的传感器配置
+     */
+    private SensorProfile getProfile(String deviceType, String metricName, double fallbackThreshold) {
+        Map<String, SensorProfile> typeProfiles = DEVICE_PROFILES.get(deviceType);
+        if (typeProfiles != null && typeProfiles.containsKey(metricName)) {
+            return typeProfiles.get(metricName);
+        }
+        // 回退：基于阈值推算基线
+        return new SensorProfile(fallbackThreshold * 0.8, fallbackThreshold);
     }
 
     /**

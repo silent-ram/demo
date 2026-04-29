@@ -124,8 +124,9 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         alertMapper.updateById(alert);
     }
 
+    @Transactional
     public void receiveAlert(AlertDTO alertDTO) {
-        // 告警合并逻辑：检查是否有相同设备的未解决同类型告警
+        // 告警合并逻辑：原子更新同设备同类型的未解决告警，避免并发竞态
         Long deviceId = null;
         try {
             if (alertDTO.getDeviceId() != null) {
@@ -138,20 +139,16 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         String alertType = alertDTO.getType();
 
         if (deviceId != null && alertType != null) {
-            // 查询同设备同类型的未解决告警（不限制时间，只要未解决就合并）
-            QueryWrapper<Alert> wrapper = new QueryWrapper<>();
-            wrapper.eq("device_id", deviceId);
-            wrapper.eq("type", alertType);
-            wrapper.eq("resolved", false);
+            // 使用数据库原子 UPDATE 替代 selectOne + updateById
+            int updated = alertMapper.updateExistingUnresolvedAlert(
+                deviceId,
+                alertType,
+                alertDTO.getFaultProbability(),
+                alertDTO.getMessage(),
+                LocalDateTime.now()
+            );
 
-            Alert existingAlert = alertMapper.selectOne(wrapper);
-            if (existingAlert != null) {
-                // 更新告警的故障概率和消息（合并）
-                existingAlert.setFaultProbability(alertDTO.getFaultProbability());
-                existingAlert.setMessage(alertDTO.getMessage());
-                existingAlert.setUpdatedAt(LocalDateTime.now());
-                alertMapper.updateById(existingAlert);
-                // 不发送WebSocket，只更新现有告警
+            if (updated > 0) {
                 log.info("Alert merged for device: {}, type: {}", deviceId, alertType);
                 return;
             }

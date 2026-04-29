@@ -1,0 +1,30 @@
+{
+  "accuracy": 0.9346666666666666,
+  "precision": 0.9106145251396648,
+  "recall": 0.9504373177842566,
+  "f1_score": 0.9300998573466477,
+  "roc_auc": 0.9895290864678619,
+  "training_samples": 3500,
+  "test_samples": 1500,
+  "positive_samples": 2405,
+  "feature_count": 15,
+  "feature_importance": {
+    "temperature_current": 0.526540368848669,
+    "temperature_trend": 0.19600709139036532,
+    "temperature_volatility": 0.18910163602679786,
+    "temperature_accumulation": 0.15808685797209512,
+    "temperature_moving_avg": -0.5130730644349283,
+    "vibration_current": 0.1929181194074916,
+    "vibration_trend": -0.14685108608725006,
+    "vibration_volatility": -0.5351374484922511,
+    "vibration_accumulation": 4.6510147554921355,
+    "vibration_moving_avg": 0.8457750680260798,
+    "pressure_current": 0.2514812148340951,
+    "pressure_trend": 0.25606629648217394,
+    "pressure_volatility": 0.18312238341787795,
+    "pressure_accumulation": 0.08972877677671848,
+    "pressure_moving_avg": -0.19824227603536454
+  },
+  "model_loaded": true,
+  "trained_at": "2026-04-29T15:38:33.010906"
+}
