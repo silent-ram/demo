@@ -116,7 +116,9 @@ function connectWebSocket() {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const wsPort = window.location.hostname === 'localhost' ? '8080' : window.location.port
   const wsHost = window.location.hostname + ':' + wsPort
-  ws = new WebSocket(`${wsProtocol}//${wsHost}/ws/alert`)
+  const token = localStorage.getItem('token')
+  const tokenParam = token ? `?token=${encodeURIComponent(token)}` : ''
+  ws = new WebSocket(`${wsProtocol}//${wsHost}/ws/alert${tokenParam}`)
 
   ws.onopen = () => {
     alertStore.setWsConnected(true)

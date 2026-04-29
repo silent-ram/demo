@@ -32,6 +32,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class AlertService extends ServiceImpl<AlertMapper, Alert> {
@@ -63,6 +65,10 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
 
     @Autowired
     private AlertWebSocketHandler alertWebSocketHandler;
+
+    // 补偿任务记录：{alertId: {type: "device_status" | "maintenance", ...}}
+    // 用于远程调用失败后的异步补偿
+    private final Map<Long, Map<String, Object>> compensationTasks = new ConcurrentHashMap<>();
 
     public Page<Alert> page(com.baomidou.mybatisplus.extension.plugins.pagination.Page<Alert> page) {
         return alertMapper.selectPage(page, null);
@@ -227,15 +233,12 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
     }
 
     /**
-     * 处理告警（完整版本）
-     * @param id 告警ID
-     * @param resolveNote 处理备注
-     * @param operatorId 操作人ID
-     * @param resolveType 处理类型: COMPLETED(已维修), PENDING(待维修), STOPPED(停机)
-     * @param maintenanceType 维修类型
-     * @param faultCategory 故障分类
-     * @param description 故障描述
+     * 处理告警（完整版本，带本地事务 + 远程调用补偿机制）
+     *
+     * 设计：本地 MySQL 更新在 @Transactional 事务中保证原子性；
+     * 远程调用（device-service）失败时记录补偿任务，通过定时任务重试。
      */
+    @Transactional
     public void resolveAlert(Long id, String resolveNote, Long operatorId, String resolveType,
                              String maintenanceType, String faultCategory, String description) {
         Alert alert = alertMapper.selectById(id);
@@ -243,6 +246,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
             throw new RuntimeException("Alert not found");
         }
 
+        // 1. 本地事务：更新告警状态
         alert.setResolved(true);
         alert.setResolveNote(resolveNote);
         alert.setResolvedBy(operatorId);
@@ -251,67 +255,115 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         alertMapper.updateById(alert);
 
         Long deviceId = alert.getDeviceId();
+        if (deviceId == null) {
+            return;
+        }
 
-        if (deviceId != null) {
-            if ("COMPLETED".equals(resolveType)) {
-                // 已维修：更新设备状态为正常，并创建维修记录
-                deviceServiceClient.updateDeviceStatus(deviceId, "NORMAL");
+        // 2. 构建维修记录 DTO（共用）
+        MaintenanceDTO maintenance = new MaintenanceDTO();
+        maintenance.setDeviceId(deviceId);
+        maintenance.setType(maintenanceType != null ? maintenanceType : (alert.getType() != null ? alert.getType() : "REPAIR"));
+        maintenance.setFaultCategory(faultCategory);
+        maintenance.setAlertId(id);
+        maintenance.setActionTaken(resolveNote != null ? resolveNote : "已处理");
+        maintenance.setOperatorId(operatorId);
+        maintenance.setRepairedAt(LocalDateTime.now());
 
-                MaintenanceDTO maintenance = new MaintenanceDTO();
-                maintenance.setDeviceId(deviceId);
-                maintenance.setType(maintenanceType != null ? maintenanceType : (alert.getType() != null ? alert.getType() : "REPAIR"));
-                maintenance.setFaultCategory(faultCategory);
-                maintenance.setDescription(description != null ? description : ("告警处理: " + (alert.getMessage() != null ? alert.getMessage() : "无描述")));
-                maintenance.setAlertId(id);
-                maintenance.setActionTaken(resolveNote != null ? resolveNote : "已维修");
-                maintenance.setOperatorId(operatorId);
-                maintenance.setStatus("COMPLETED");
-                maintenance.setRepairedAt(LocalDateTime.now());
+        String targetStatus;
+        if ("COMPLETED".equals(resolveType)) {
+            targetStatus = "NORMAL";
+            maintenance.setStatus("COMPLETED");
+            maintenance.setDescription(description != null ? description : ("告警处理: " + (alert.getMessage() != null ? alert.getMessage() : "无描述")));
+        } else if ("STOPPED".equals(resolveType)) {
+            targetStatus = "OFFLINE";
+            maintenance.setStatus("COMPLETED");
+            maintenance.setDescription(description != null ? description : ("告警处理-停机: " + (alert.getMessage() != null ? alert.getMessage() : "无描述")));
+        } else if ("PENDING".equals(resolveType)) {
+            targetStatus = null; // 不更新设备状态
+            maintenance.setStatus("PENDING");
+            maintenance.setDescription(description != null ? description : ("告警处理-待维修: " + (alert.getMessage() != null ? alert.getMessage() : "无描述")));
+        } else {
+            return;
+        }
 
-                try {
+        // 3. 远程调用：更新设备状态（如需要）
+        if (targetStatus != null) {
+            try {
+                deviceServiceClient.updateDeviceStatus(deviceId, targetStatus);
+                log.info("Device status updated to {} for alert: {}", targetStatus, id);
+            } catch (Exception e) {
+                log.error("Failed to update device status for alert: {}, recording compensation task", id, e);
+                recordCompensationTask(id, deviceId, "UPDATE_STATUS", targetStatus);
+            }
+        }
+
+        // 4. 远程调用：创建维修记录
+        try {
+            deviceServiceClient.createMaintenance(maintenance);
+            log.info("Maintenance record created for alert: {}", id);
+        } catch (Exception e) {
+            log.error("Failed to create maintenance record for alert: {}, recording compensation task", id, e);
+            recordCompensationTask(id, deviceId, "CREATE_MAINTENANCE", maintenance);
+        }
+    }
+
+    /**
+     * 记录补偿任务，用于远程调用失败后的异步重试
+     */
+    private void recordCompensationTask(Long alertId, Long deviceId, String taskType, Object payload) {
+        Map<String, Object> task = new HashMap<>();
+        task.put("alertId", alertId);
+        task.put("deviceId", deviceId);
+        task.put("type", taskType);
+        task.put("payload", payload);
+        task.put("createdAt", LocalDateTime.now());
+        task.put("retryCount", 0);
+
+        compensationTasks.put(alertId, task);
+        log.warn("Compensation task recorded: alertId={}, type={}", alertId, taskType);
+    }
+
+    /**
+     * 定时执行补偿任务（每5分钟检查一次）
+     */
+    @Scheduled(fixedRate = 300000)
+    public void processCompensationTasks() {
+        if (compensationTasks.isEmpty()) {
+            return;
+        }
+
+        log.info("Processing {} compensation tasks", compensationTasks.size());
+
+        for (Map.Entry<Long, Map<String, Object>> entry : new HashMap<>(compensationTasks).entrySet()) {
+            Long alertId = entry.getKey();
+            Map<String, Object> task = entry.getValue();
+            int retryCount = (int) task.getOrDefault("retryCount", 0);
+
+            if (retryCount >= 3) {
+                log.error("Compensation task exceeded max retries, dropping: alertId={}", alertId);
+                compensationTasks.remove(alertId);
+                continue;
+            }
+
+            String taskType = (String) task.get("type");
+            Long deviceId = (Long) task.get("deviceId");
+
+            try {
+                if ("UPDATE_STATUS".equals(taskType)) {
+                    String status = (String) task.get("payload");
+                    deviceServiceClient.updateDeviceStatus(deviceId, status);
+                    log.info("Compensation success: updated device status for alert {}", alertId);
+                    compensationTasks.remove(alertId);
+                } else if ("CREATE_MAINTENANCE".equals(taskType)) {
+                    MaintenanceDTO maintenance = (MaintenanceDTO) task.get("payload");
                     deviceServiceClient.createMaintenance(maintenance);
-                    log.info("Maintenance record created for alert: {}", id);
-                } catch (Exception e) {
-                    log.error("Failed to create maintenance record", e);
+                    log.info("Compensation success: created maintenance for alert {}", alertId);
+                    compensationTasks.remove(alertId);
                 }
-            } else if ("STOPPED".equals(resolveType)) {
-                // 停机：更新设备状态为离线，并创建维修记录
-                deviceServiceClient.updateDeviceStatus(deviceId, "OFFLINE");
-
-                MaintenanceDTO maintenance = new MaintenanceDTO();
-                maintenance.setDeviceId(deviceId);
-                maintenance.setType(maintenanceType != null ? maintenanceType : (alert.getType() != null ? alert.getType() : "REPAIR"));
-                maintenance.setFaultCategory(faultCategory);
-                maintenance.setDescription(description != null ? description : ("告警处理-停机: " + (alert.getMessage() != null ? alert.getMessage() : "无描述")));
-                maintenance.setAlertId(id);
-                maintenance.setActionTaken(resolveNote != null ? resolveNote : "设备已停机");
-                maintenance.setOperatorId(operatorId);
-                maintenance.setStatus("COMPLETED");
-                maintenance.setRepairedAt(LocalDateTime.now());
-
-                try {
-                    deviceServiceClient.createMaintenance(maintenance);
-                } catch (Exception e) {
-                    log.error("Failed to create maintenance record", e);
-                }
-            } else if ("PENDING".equals(resolveType)) {
-                // 待维修：创建待处理的维修记录，用户后续可继续处理
-                MaintenanceDTO maintenance = new MaintenanceDTO();
-                maintenance.setDeviceId(deviceId);
-                maintenance.setType(maintenanceType != null ? maintenanceType : (alert.getType() != null ? alert.getType() : "REPAIR"));
-                maintenance.setFaultCategory(faultCategory);
-                maintenance.setDescription(description != null ? description : ("告警处理-待维修: " + (alert.getMessage() != null ? alert.getMessage() : "无描述")));
-                maintenance.setAlertId(id);
-                maintenance.setActionTaken(resolveNote != null ? resolveNote : "待维修");
-                maintenance.setOperatorId(operatorId);
-                maintenance.setStatus("PENDING");
-                maintenance.setRepairedAt(LocalDateTime.now());
-
-                try {
-                    deviceServiceClient.createMaintenance(maintenance);
-                } catch (Exception e) {
-                    log.error("Failed to create maintenance record", e);
-                }
+            } catch (Exception e) {
+                task.put("retryCount", retryCount + 1);
+                task.put("lastError", e.getMessage());
+                log.error("Compensation failed for alert {} (retry {}/3)", alertId, retryCount + 1, e);
             }
         }
     }

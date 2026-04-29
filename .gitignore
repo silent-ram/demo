@@ -67,11 +67,20 @@ logs/
 # Project specific exclusions
 *.docx
 ebug/
-ml-service/model/fault_model.pkl
-.claude/
-tests/
-test-results/
-playwright.config.js
+
+# ML 模型文件（二进制，由训练脚本生成）
+ml-service/model/*/
+ml-service/model/*.json
+!ml-service/model/metadata.json
+
+# 启动脚本（含敏感配置占位符）
+start-services.sh
+
+# 本地配置文件
+application-local.yml
+application-dev.yml
+application-prod.yml
+
 .claude/
 tests/
 test-results/
