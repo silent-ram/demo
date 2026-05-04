@@ -16,6 +16,14 @@ export function getTrendChart(deviceId, points = 100) {
   })
 }
 
+export function getFaultProbabilityChart(deviceId, deviceName = '', hours = 24) {
+  return request({
+    url: '/ml/chart/fault-probability',
+    method: 'get',
+    params: { deviceId, deviceName, hours }
+  })
+}
+
 export function getModelMetrics() {
   return request({
     url: '/ml/model/metrics',
@@ -23,10 +31,35 @@ export function getModelMetrics() {
   })
 }
 
-export function retrainModel() {
+export function retrainModel(mode = 'hybrid') {
   return request({
     url: '/ml/model/retrain',
-    method: 'post'
+    method: 'post',
+    headers: { 'X-API-Key': 'myDefaultMLApiKey' },
+    data: { mode }
+  })
+}
+
+export function getModelVersions() {
+  return request({
+    url: '/ml/model/versions',
+    method: 'get'
+  })
+}
+
+export function rollbackModel(data) {
+  return request({
+    url: '/ml/model/rollback',
+    method: 'post',
+    headers: { 'X-API-Key': 'myDefaultMLApiKey' },
+    data
+  })
+}
+
+export function getLabelingStatus() {
+  return request({
+    url: '/ml/model/labeling-status',
+    method: 'get'
   })
 }
 

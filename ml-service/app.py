@@ -7,12 +7,15 @@ import os
 import json
 import requests
 
-from train import train_all_models
+from train import train_all_models, train_all_with_real_data
 from predict import (
     predictor, predict_fault, predict_with_raw,
     FaultPredictor, FeatureExtractor, DEVICE_PROFILES
 )
 from chart import generate_trend_chart, generate_multi_device_chart
+from pseudo_label_engine import get_pseudo_engine
+from hybrid_trainer import HybridTrainer
+from model_version_manager import get_version_manager
 
 app = Flask(__name__)
 
@@ -165,6 +168,14 @@ def predict():
             return jsonify({'success': False, 'message': result['error'], 'data': None}), 500
 
         fault_probability = result['fault_probability']
+
+        # 触发伪标签引擎
+        if 'error' not in result and result.get('features'):
+            try:
+                pseudo_engine = get_pseudo_engine()
+                pseudo_engine.on_prediction(device_type, result['features'], fault_probability)
+            except Exception as e:
+                app.logger.warning('伪标签引擎调用失败: %s', e)
 
         return jsonify({
             'success': True,
@@ -334,22 +345,38 @@ def get_model_metrics():
 @limiter.limit("1 per hour")
 @require_api_key
 def retrain_model():
-    """重新训练所有设备类型的模型。"""
+    """重新训练所有设备类型的模型。
+
+    请求体:
+    {
+        "mode": "hybrid"  // "simulated" | "hybrid"，默认 "simulated"
+    }
+    """
     try:
-        global model_metrics
+        data = request.get_json() or {}
+        mode = data.get('mode', 'simulated')
 
         # 清空历史缓存（避免旧缓存影响新模型推理）
         _sensor_history.clear()
 
-        metadata = train_all_models(n_samples=5000)
+        if mode == 'hybrid':
+            trainer = HybridTrainer(pseudo_engine=get_pseudo_engine())
+            metadata = trainer.train_all_hybrid(n_sim_samples=5000)
+        elif mode == 'real-data':
+            # 从 InfluxDB 读取真实数据训练（毕设核心要求）
+            metadata = train_all_with_real_data(
+                min_samples=100, influx_hours=168, n_sim_samples=5000
+            )
+        else:
+            metadata = train_all_models(n_samples=5000)
 
         # 重新加载所有模型到内存
         predictor.reload()
 
         return jsonify({
             'success': True,
-            'message': '模型重新训练成功',
-            'data': metadata.get('device_metrics', {})
+            'message': f'模型重新训练成功 (mode={mode})',
+            'data': metadata.get('device_results' if mode == 'hybrid' else 'device_metrics', {})
         })
 
     except Exception as e:
@@ -359,6 +386,114 @@ def retrain_model():
             'message': f'模型训练失败: {str(e)}',
             'data': None
         }), 500
+
+
+@app.route('/ml/model/versions', methods=['GET'])
+def list_model_versions():
+    """查询所有设备类型的模型版本历史。"""
+    try:
+        version_manager = get_version_manager()
+        result = {}
+        for dtype in DEVICE_PROFILES.keys():
+            result[dtype] = version_manager.list_versions(dtype)
+        return jsonify({'success': True, 'data': result})
+    except Exception as e:
+        app.logger.error(f"获取版本列表失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e), 'data': None}), 500
+
+
+@app.route('/ml/model/rollback', methods=['POST'])
+@require_api_key
+def rollback_model():
+    """回滚到指定版本。
+
+    请求体:
+    {
+        "device_type": "工业机器人",
+        "version": "v2"
+    }
+    """
+    try:
+        data = request.get_json()
+        device_type = data.get('device_type')
+        version = data.get('version')
+
+        if not device_type or not version:
+            return jsonify({'success': False, 'message': '缺少 device_type 或 version'}), 400
+
+        version_manager = get_version_manager()
+        version_manager.rollback(device_type, version)
+
+        # 重新加载模型
+        predictor.reload()
+
+        return jsonify({
+            'success': True,
+            'message': f'已回滚 {device_type} 到 {version}',
+            'data': {'device_type': device_type, 'version': version}
+        })
+    except Exception as e:
+        app.logger.error(f"回滚失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'回滚失败: {str(e)}', 'data': None}), 500
+
+
+@app.route('/ml/model/labeling-status', methods=['GET'])
+def get_labeling_status():
+    """获取伪标签统计。"""
+    try:
+        pseudo_engine = get_pseudo_engine()
+        stats = pseudo_engine.get_statistics()
+        totals = pseudo_engine.get_total_counts()
+        return jsonify({
+            'success': True,
+            'data': {
+                'statistics': stats,
+                'totals': totals
+            }
+        })
+    except Exception as e:
+        app.logger.error(f"获取伪标签统计失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e), 'data': None}), 500
+
+
+@app.route('/ml/chart/fault-probability', methods=['GET'])
+def get_fault_probability_chart():
+    """生成故障概率趋势图（Matplotlib）。"""
+    try:
+        from chart import generate_fault_probability_chart
+
+        device_id = request.args.get('deviceId', '1')
+        device_name = request.args.get('deviceName', '')
+        hours = int(request.args.get('hours', 24))
+
+        # 从 collector-service 获取故障概率历史
+        history_data = []
+        try:
+            collector_url = os.getenv('COLLECTOR_SERVICE_URL', 'http://localhost:8083')
+            resp = requests.get(
+                f'{collector_url}/collector/fault-probability-history/{device_id}',
+                params={'hours': hours},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                result = resp.json()
+                if result.get('code') == 200 and result.get('data'):
+                    history_data = result['data']
+        except Exception as e:
+            app.logger.warning('获取故障概率历史失败: %s', e)
+
+        img_base64 = generate_fault_probability_chart(device_id, history_data, device_name)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'image': img_base64,
+                'format': 'png'
+            }
+        })
+    except Exception as e:
+        app.logger.error(f"生成故障概率图失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e), 'data': None}), 500
 
 
 @app.errorhandler(Exception)

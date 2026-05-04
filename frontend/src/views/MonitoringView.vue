@@ -139,8 +139,20 @@ function connectWebSocket() {
 
       const prob = (alert.faultProbability * 100 || 0).toFixed(1)
 
+      // 优先使用服务端推送的维修关联上下文，避免重复请求
       let maintenanceInfo = ''
-      if (alert.deviceId) {
+      if (alert.context && alert.context.maintenanceHistory) {
+        const records = alert.context.maintenanceHistory
+        if (records.length > 0) {
+          const latest = records[0]
+          maintenanceInfo = '\n历史维修: ' + (latest.type || '未知') + ' - ' + (latest.description || '无描述')
+          if (alert.context.maintenanceCount > records.length) {
+            maintenanceInfo += ' 等' + alert.context.maintenanceCount + '条记录'
+          }
+        } else {
+          maintenanceInfo = '\n历史维修: 暂无记录'
+        }
+      } else if (alert.deviceId) {
         try {
           const mRes = await getMaintenancesByDevice(alert.deviceId)
           const records = mRes.data || []

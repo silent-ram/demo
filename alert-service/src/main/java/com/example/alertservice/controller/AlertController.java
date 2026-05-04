@@ -30,11 +30,13 @@ public class AlertController {
     private OperationLogClient operationLogClient;
 
     @GetMapping
-    @Operation(summary = "分页查询告警", description = "支持分页查询所有告警")
+    @Operation(summary = "分页查询告警", description = "支持分页查询所有告警，支持按告警级别和解决状态过滤")
     public Result<Page<Alert>> listAlerts(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        Page<Alert> result = alertService.page(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, size));
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String level,
+            @RequestParam(required = false) Boolean resolved) {
+        Page<Alert> result = alertService.listAlerts(page, size, level, resolved);
         return Result.success(result);
     }
 

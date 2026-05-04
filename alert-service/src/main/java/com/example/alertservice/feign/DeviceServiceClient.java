@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import java.util.List;
 import java.util.Map;
 
 @FeignClient(name = "device-service")
@@ -22,4 +23,7 @@ public interface DeviceServiceClient {
 
     @PostMapping("/maintenance")
     Map<String, Object> createMaintenance(@RequestBody MaintenanceDTO maintenanceDTO);
+
+    @GetMapping("/maintenance/device/{deviceId}")
+    Map<String, Object> getMaintenancesByDevice(@PathVariable Long deviceId);
 }

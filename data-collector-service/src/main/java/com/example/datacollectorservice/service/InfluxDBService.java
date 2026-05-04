@@ -22,7 +22,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class InfluxDBService {
@@ -64,6 +66,10 @@ public class InfluxDBService {
     }
 
     public void writeMetrics(List<MetricDTO> metrics) {
+        writeMetrics(metrics, null);
+    }
+
+    public void writeMetrics(List<MetricDTO> metrics, Double faultProbability) {
         log.info("Attempting to write {} metrics to InfluxDB", metrics.size());
 
         List<Point> points = new ArrayList<>();
@@ -75,6 +81,19 @@ public class InfluxDBService {
                     .addField("unit", metric.getUnit() != null ? metric.getUnit() : "")
                     .time(metric.getTimestamp(), WritePrecision.MS);
             points.add(point);
+        }
+
+        // 新增：写入故障概率
+        if (faultProbability != null && !metrics.isEmpty()) {
+            String deviceId = metrics.get(0).getDeviceId();
+            Instant timestamp = metrics.get(0).getTimestamp();
+            Point probaPoint = Point.measurement(MEASUREMENT)
+                    .addTag("device_id", deviceId)
+                    .addTag("metric_name", "fault_probability")
+                    .addField("value", faultProbability)
+                    .time(timestamp, WritePrecision.MS);
+            points.add(probaPoint);
+            log.debug("写入故障概率: device={}, probability={}", deviceId, faultProbability);
         }
 
         try (WriteApi writeApi = influxDBClient.getWriteApi()) {
@@ -324,6 +343,41 @@ public class InfluxDBService {
         QueryApi queryApi = influxDBClient.getQueryApi();
         queryApi.query(flux, org);
         log.info("All metrics cleared from InfluxDB");
+    }
+
+    /**
+     * 查询设备故障概率历史
+     */
+    public List<Map<String, Object>> queryFaultProbabilityHistory(String deviceId, int hours) {
+        String startTime = java.time.Instant.now().minusSeconds(hours * 3600).toString();
+        String flux = String.format(
+                "from(bucket: \"%s\") " +
+                "|> range(start: %s) " +
+                "|> filter(fn: (r) => r[\"_measurement\"] == \"%s\") " +
+                "|> filter(fn: (r) => r[\"device_id\"] == \"%s\") " +
+                "|> filter(fn: (r) => r[\"metric_name\"] == \"fault_probability\") " +
+                "|> filter(fn: (r) => r[\"_field\"] == \"value\") " +
+                "|> aggregateWindow(every: 5m, fn: mean) " +
+                "|> yield(name: \"mean\")",
+                bucket, startTime, MEASUREMENT, deviceId
+        );
+
+        QueryApi queryApi = influxDBClient.getQueryApi();
+        List<FluxTable> tables = queryApi.query(flux, org);
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        for (FluxTable table : tables) {
+            for (FluxRecord record : table.getRecords()) {
+                Map<String, Object> point = new HashMap<>();
+                point.put("timestamp", record.getTime().toString());
+                Object value = record.getValueByKey("_value");
+                point.put("value", value instanceof Number ? ((Number) value).doubleValue() : 0.0);
+                results.add(point);
+            }
+        }
+
+        log.info("查询到设备 {} 的 {} 条故障概率历史记录", deviceId, results.size());
+        return results;
     }
 
     public void clearDeviceMetrics(String deviceId) {

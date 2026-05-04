@@ -8,7 +8,9 @@ import os
 import json
 from datetime import datetime
 
-from feature_extractor import FeatureExtractor, DEVICE_PROFILES, SENSOR_CODES
+from feature_extractor import FeatureExtractor, SENSOR_CODES
+from config_loader import get_device_profiles_legacy, get_stable_params
+from data_fetcher import get_data_fetcher
 
 MODEL_ROOT = 'model'
 WINDOW_SIZE = 10
@@ -34,7 +36,7 @@ def generate_device_data(device_type: str, n_samples: int = 5000,
         feature_names: 特征名称列表
     """
     np.random.seed(random_seed)
-    profile = DEVICE_PROFILES[device_type]
+    profile = get_device_profiles_legacy()[device_type]
 
     # 为每种传感器生成连续时序数据（随机游走）
     # 总原始点数 = n_samples * step + window_size，step=5 保证窗口间有重叠但不完全重复
@@ -53,12 +55,16 @@ def generate_device_data(device_type: str, n_samples: int = 5000,
 
         for code in SENSOR_CODES:
             baseline = profile[code]['baseline']
-            noise_std = baseline * 0.02  # 噪声为标准差的2%
-            drift = np.random.normal(0, baseline * 0.005)  # 缓慢漂移
+            stable_cfg = get_stable_params(device_type, code)
+            noise_ratio = stable_cfg.get('noise_ratio', 0.02)
+            drift_ratio = stable_cfg.get('drift_ratio', 0.005)
+            bound_ratio = stable_cfg.get('bound_ratio', 1.5)
+            noise_std = baseline * noise_ratio
+            drift = np.random.normal(0, baseline * drift_ratio)
 
             current_values[code] += drift + np.random.normal(0, noise_std)
-            # 边界保护：不低于0，不偏离基线超过50%
-            current_values[code] = max(0.0, min(current_values[code], baseline * 1.5))
+            # 边界保护：不低于0，不偏离基线不超过 bound_ratio
+            current_values[code] = max(0.0, min(current_values[code], baseline * bound_ratio))
 
             raw_data[code].append(current_values[code])
 
@@ -266,7 +272,7 @@ def train_all_models(n_samples: int = 5000):
     all_metrics = {}
     all_feature_names = None
 
-    for device_type in DEVICE_PROFILES.keys():
+    for device_type in get_device_profiles_legacy().keys():
         print(f'\n--- 训练设备类型: {device_type} ---')
         try:
             X, y, feature_names = generate_device_data(
@@ -291,7 +297,7 @@ def train_all_models(n_samples: int = 5000):
         'moving_avg_window': MOVING_AVG_WINDOW,
         'sensor_codes': SENSOR_CODES,
         'feature_names': all_feature_names or FeatureExtractor.get_feature_names(),
-        'device_types': list(DEVICE_PROFILES.keys()),
+        'device_types': list(get_device_profiles_legacy().keys()),
         'device_metrics': all_metrics
     }
 
@@ -309,3 +315,90 @@ def train_all_models(n_samples: int = 5000):
 
 if __name__ == '__main__':
     train_all_models(n_samples=5000)
+
+
+def train_all_with_real_data(min_samples: int = 100, influx_hours: int = 168, n_sim_samples: int = 5000):
+    """
+    优先从 InfluxDB 读取真实数据训练模型，不足时补充模拟数据。
+
+    这是符合毕设要求的核心训练入口：
+    "从时序数据库中提取设备正常与故障状态下的特征数据，通过 Logistic 回归训练预测模型"
+    """
+    print('=' * 60)
+    print('工业设备故障预测模型训练 v2.1 - 真实数据驱动')
+    print('=' * 60)
+
+    fetcher = get_data_fetcher()
+    all_metrics = {}
+    all_feature_names = None
+
+    for device_type in get_device_profiles_legacy().keys():
+        print(f'\n--- 训练设备类型: {device_type} ---')
+        try:
+            # 1. 优先从 InfluxDB 读取真实数据
+            X_real, y_real, info = fetcher.fetch_training_data(
+                device_type, hours=influx_hours, min_samples=min_samples
+            )
+            print(f'  InfluxDB 数据: {info["real_samples"]} 样本, 来源: {info["source"]}')
+
+            # 2. 如果真实数据不足，补充模拟数据
+            if len(X_real) < min_samples:
+                print(f'  真实数据不足，补充模拟数据...')
+                X_sim, y_sim, feature_names = generate_device_data(
+                    device_type, n_samples=n_sim_samples,
+                    random_seed=hash(device_type + str(datetime.now().timestamp())) % 10000
+                )
+                all_feature_names = feature_names
+
+                if len(X_real) > 0:
+                    X = np.vstack([X_real, X_sim])
+                    y = np.concatenate([y_real, y_sim])
+                else:
+                    X = X_sim
+                    y = y_sim
+            else:
+                X = X_real
+                y = y_real
+                # 获取特征名
+                all_feature_names = FeatureExtractor.get_feature_names()
+
+            print(f'  总训练样本: {len(X)} (正样本: {sum(y)}, 负样本: {len(y) - sum(y)})')
+
+            # 3. 训练模型
+            metrics = train_model_for_device_type(
+                device_type, X, y,
+                all_feature_names or FeatureExtractor.get_feature_names()
+            )
+            all_metrics[device_type] = metrics
+
+        except Exception as e:
+            print(f'[{device_type}] 训练失败: {e}')
+            all_metrics[device_type] = {'error': str(e)}
+
+    fetcher.close()
+
+    # 保存全局元数据
+    metadata = {
+        'version': '2.1.0',
+        'created_at': datetime.now().isoformat(),
+        'feature_extractor_version': '2.0',
+        'feature_count': FeatureExtractor.get_expected_feature_count(),
+        'window_size': WINDOW_SIZE,
+        'moving_avg_window': MOVING_AVG_WINDOW,
+        'sensor_codes': SENSOR_CODES,
+        'feature_names': all_feature_names or FeatureExtractor.get_feature_names(),
+        'device_types': list(get_device_profiles_legacy().keys()),
+        'device_metrics': all_metrics,
+        'data_source': 'influxdb + simulated'
+    }
+
+    metadata_path = os.path.join(MODEL_ROOT, 'metadata.json')
+    with open(metadata_path, 'w', encoding='utf-8') as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+    print(f'\n全局元数据已保存: {metadata_path}')
+    print('=' * 60)
+    print('训练完成')
+    print('=' * 60)
+
+    return metadata

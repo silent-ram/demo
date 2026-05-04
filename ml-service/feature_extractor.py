@@ -11,44 +11,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 设备类型基线与阈值配置
-# baseline: 设备正常运行时的典型值
-# threshold: 告警阈值（用于 accumulation 计算）
-DEVICE_PROFILES = {
-    '工业机器人': {
-        'temperature': {'baseline': 65.0, 'threshold': 80.0},
-        'vibration':   {'baseline': 0.25, 'threshold': 0.6},
-        'pressure':    {'baseline': 100.0, 'threshold': 130.0},
-    },
-    '数控机床': {
-        'temperature': {'baseline': 55.0, 'threshold': 80.0},
-        'vibration':   {'baseline': 0.20, 'threshold': 0.6},
-        'pressure':    {'baseline': 90.0, 'threshold': 130.0},
-    },
-    '输送设备': {
-        'temperature': {'baseline': 50.0, 'threshold': 60.0},
-        'vibration':   {'baseline': 0.30, 'threshold': 0.5},
-        'pressure':    {'baseline': 80.0, 'threshold': 100.0},
-    },
-    '焊接设备': {
-        'temperature': {'baseline': 85.0, 'threshold': 100.0},
-        'vibration':   {'baseline': 0.15, 'threshold': 0.5},
-        'pressure':    {'baseline': 110.0, 'threshold': 140.0},
-    },
-    '压力设备': {
-        'temperature': {'baseline': 70.0, 'threshold': 90.0},
-        'vibration':   {'baseline': 0.20, 'threshold': 0.5},
-        'pressure':    {'baseline': 120.0, 'threshold': 150.0},
-    },
-    '包装设备': {
-        'temperature': {'baseline': 45.0, 'threshold': 50.0},
-        'vibration':   {'baseline': 0.10, 'threshold': 0.4},
-        'pressure':    {'baseline': 70.0, 'threshold': 90.0},
-    },
-}
+# 统一配置加载器：从 config/device_profiles.json 读取设备参数
+from config_loader import get_device_profiles_legacy, get_sensor_config, get_sensor_codes
 
-# 固定传感器顺序，保证特征向量维度一致
-SENSOR_CODES = ['temperature', 'vibration', 'pressure']
+# 向后兼容：保留 DEVICE_PROFILES 和 SENSOR_CODES 变量名
+# 但改为从统一配置文件加载
+DEVICE_PROFILES = get_device_profiles_legacy()
+SENSOR_CODES = get_sensor_codes()
 
 
 class FeatureExtractor:

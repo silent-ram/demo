@@ -50,14 +50,38 @@
             </div>
           </template>
           <div v-if="simulationEnabled">
-            <el-radio-group v-model="simMode" @change="onModeChange" style="margin-bottom: 15px;">
-              <el-radio-button value="NORMAL">正常输出</el-radio-button>
-              <el-radio-button value="INSERT">插入数据</el-radio-button>
-              <el-radio-button value="RANDOM">随机范围</el-radio-button>
-            </el-radio-group>
+            <!-- 原有模式控制（数据生成方式） -->
+            <div class="control-section">
+              <div class="section-label">数据生成方式</div>
+              <el-radio-group v-model="simMode" @change="onModeChange" style="margin-bottom: 15px;">
+                <el-radio-button value="NORMAL">正常输出</el-radio-button>
+                <el-radio-button value="INSERT">插入数据</el-radio-button>
+                <el-radio-button value="RANDOM">随机范围</el-radio-button>
+              </el-radio-group>
+            </div>
 
-            <div v-if="simMode === 'NORMAL'">
-              <el-alert type="info" :closable="false" show-icon>正常模式：在正常指标范围内自动随机生成数据</el-alert>
+            <!-- 新增：传感模拟模式（运行场景） -->
+            <div class="control-section" v-if="simMode === 'NORMAL'">
+              <div class="section-label">运行场景模拟</div>
+              <el-radio-group v-model="sensorSimMode" @change="onSensorSimModeChange" style="margin-bottom: 10px;" size="small">
+                <el-radio-button value="STABLE">稳定运行</el-radio-button>
+                <el-radio-button value="DEGRADING_SLOW">缓慢劣化</el-radio-button>
+                <el-radio-button value="DEGRADING_FAST">快速劣化</el-radio-button>
+                <el-radio-button value="SUDDEN_FAULT">突发故障</el-radio-button>
+                <el-radio-button value="SPIKE_RECOVER">偶发异常</el-radio-button>
+              </el-radio-group>
+              <div style="margin-top: 10px;">
+                <el-button type="primary" size="small" @click="applyResetStable">恢复稳定</el-button>
+              </div>
+              <el-alert
+                v-if="sensorSimMode && modeDescriptions[sensorSimMode]"
+                :type="modeDescriptions[sensorSimMode].type"
+                :title="modeDescriptions[sensorSimMode].title"
+                :description="modeDescriptions[sensorSimMode].desc"
+                :closable="false"
+                show-icon
+                style="margin-top: 10px;"
+              />
             </div>
 
             <div v-if="simMode === 'INSERT'">
@@ -103,11 +127,11 @@
     </el-row>
 
     <el-row :gutter="20" style="margin-top: 20px;" class="animate-fade-in delay-300">
-      <el-col :span="24">
+      <el-col :span="12">
         <el-card shadow="hover">
           <template #header>
             <div class="card-header-flex">
-              <span class="card-title">多维趋势图</span>
+              <span class="card-title">传感器多维趋势图</span>
               <el-button type="primary" size="small" @click="loadTrendChart" :loading="trendLoading">刷新</el-button>
             </div>
           </template>
@@ -115,6 +139,20 @@
             <img :src="'data:image/png;base64,' + trendImage" alt="趋势图" />
           </div>
           <el-empty v-else description="暂无趋势图数据" />
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card shadow="hover">
+          <template #header>
+            <div class="card-header-flex">
+              <span class="card-title">故障概率趋势图（Matplotlib）</span>
+              <el-button type="primary" size="small" @click="loadFaultProbChart" :loading="faultProbLoading">刷新</el-button>
+            </div>
+          </template>
+          <div v-if="faultProbImage" class="trend-image">
+            <img :src="'data:image/png;base64,' + faultProbImage" alt="故障概率趋势" />
+          </div>
+          <el-empty v-else description="暂无故障概率历史数据" />
         </el-card>
       </el-col>
     </el-row>
@@ -126,8 +164,9 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { getDevice, updateDeviceSimulation, updateDeviceStatus, getMaintenanceList } from '@/api/device'
-import { getMetrics, getLatestMetric, setDeviceMode, insertDeviceData, setDeviceRandomRange, getDeviceMode, clearDeviceManualData } from '@/api/collector'
+import { getMetrics, getLatestMetric, setDeviceMode, insertDeviceData, setDeviceRandomRange, getDeviceMode, clearDeviceManualData, setSimMode, getSimMode, resetSimMode, getFaultProbabilityHistory } from '@/api/collector'
 import { getChart } from '@/api/alert'
+import { getFaultProbabilityChart } from '@/api/ml'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
@@ -140,16 +179,28 @@ const device = ref({})
 const maintenanceList = ref([])
 const trendImage = ref('')
 const trendLoading = ref(false)
+const faultProbImage = ref('')
+const faultProbLoading = ref(false)
 const metricsData = ref([])
 
 const simulationEnabled = ref(false)
 const simMode = ref('NORMAL')
+const sensorSimMode = ref('STABLE')
+const simModeDetail = ref({ desc: '稳定运行', canTriggerAlert: false })
 const insertTemperature = ref(60)
 const insertVibration = ref(0.2)
 const insertPressure = ref(700)
 const rangeTemperature = ref([40, 70])
 const rangeVibration = ref([0.1, 0.5])
 const rangePressure = ref([500, 800])
+
+const modeDescriptions = {
+  STABLE: { title: '稳定运行', desc: '传感器在基线附近小幅随机游走，不会自发产生异常，故障概率<5%', type: 'info' },
+  DEGRADING_SLOW: { title: '缓慢劣化', desc: '模拟轴承磨损等渐进故障，传感器值缓慢向阈值推进', type: 'warning' },
+  DEGRADING_FAST: { title: '快速劣化', desc: '模拟润滑失效等较快速渐进故障，传感器值较快向阈值推进', type: 'warning' },
+  SUDDEN_FAULT: { title: '突发故障', desc: '模拟电路短路或机械断裂，传感器值瞬间跳变到阈值以上', type: 'danger' },
+  SPIKE_RECOVER: { title: '偶发异常', desc: '模拟电磁干扰或瞬时过载，短暂跳变后自动恢复，不应触发告警', type: 'info' }
+}
 
 async function loadDevice() {
   try { const res = await getDevice(route.params.id); device.value = res.data || {}; simulationEnabled.value = device.value.simulationEnabled || false }
@@ -167,6 +218,17 @@ async function loadTrendChart() {
   finally { trendLoading.value = false }
 }
 
+async function loadFaultProbChart() {
+  try {
+    faultProbLoading.value = true
+    const res = await getFaultProbabilityChart(route.params.id, device.value.name, 24)
+    if (res.data && res.data.image) {
+      faultProbImage.value = res.data.image
+    }
+  } catch (error) { console.error('加载故障概率趋势图失败:', error) }
+  finally { faultProbLoading.value = false }
+}
+
 async function loadMetrics() {
   try { const res = await getMetrics(route.params.id, {}); metricsData.value = res.data || []; updateChart() }
   catch (error) { console.error('加载指标数据失败:', error) }
@@ -177,15 +239,35 @@ async function loadSimulationStatus() {
     const deviceRes = await getDevice(route.params.id)
     if (deviceRes.data) simulationEnabled.value = deviceRes.data.simulationEnabled || false
     else simulationEnabled.value = false
-    try { const modeRes = await getDeviceMode(route.params.id); if (modeRes.data?.mode) simMode.value = modeRes.data.mode }
-    catch (e) { simMode.value = 'NORMAL' }
+    try {
+      const modeRes = await getDeviceMode(route.params.id)
+      if (modeRes.data?.mode) simMode.value = modeRes.data.mode
+    } catch (e) { simMode.value = 'NORMAL' }
+    try {
+      const simModeRes = await getSimMode(route.params.id)
+      if (simModeRes.data?.mode) {
+        sensorSimMode.value = simModeRes.data.mode
+        simModeDetail.value = {
+          desc: simModeRes.data.desc || modeDescriptions[sensorSimMode.value]?.title || '',
+          canTriggerAlert: simModeRes.data.canTriggerAlert || false
+        }
+      }
+    } catch (e) {
+      sensorSimMode.value = 'STABLE'
+      simModeDetail.value = { desc: '稳定运行', canTriggerAlert: false }
+    }
   } catch (error) { console.error('加载模拟状态失败:', error) }
 }
 
 async function toggleSimulation(value) {
   try {
     await updateDeviceSimulation(route.params.id, value)
-    if (value) { await setDeviceMode(route.params.id, 'NORMAL'); simMode.value = 'NORMAL' }
+    if (value) {
+      await setDeviceMode(route.params.id, 'NORMAL')
+      simMode.value = 'NORMAL'
+      await setSimMode(route.params.id, 'STABLE')
+      sensorSimMode.value = 'STABLE'
+    }
     ElMessage.success(value ? '模拟已启动' : '模拟已停止')
   } catch (error) { console.error('切换模拟状态失败:', error); simulationEnabled.value = !value }
 }
@@ -193,6 +275,25 @@ async function toggleSimulation(value) {
 async function onModeChange(mode) {
   try { await setDeviceMode(route.params.id, mode); ElMessage.success('模式已切换为: ' + (mode === 'NORMAL' ? '正常输出' : mode === 'INSERT' ? '插入数据' : '随机范围')) }
   catch (error) { console.error('切换模式失败:', error) }
+}
+
+async function onSensorSimModeChange(mode) {
+  try {
+    await setSimMode(route.params.id, mode)
+    sensorSimMode.value = mode
+    const info = modeDescriptions[mode]
+    simModeDetail.value = { desc: info.title, canTriggerAlert: info.type === 'warning' || info.type === 'danger' }
+    ElMessage.success('传感模拟模式已切换为: ' + info.title)
+  } catch (error) { console.error('切换传感模拟模式失败:', error) }
+}
+
+async function applyResetStable() {
+  try {
+    await resetSimMode(route.params.id)
+    sensorSimMode.value = 'STABLE'
+    simModeDetail.value = { desc: '稳定运行', canTriggerAlert: false }
+    ElMessage.success('已重置为稳定运行模式')
+  } catch (error) { console.error('重置失败:', error) }
 }
 
 async function applyInsertData() {
@@ -206,8 +307,14 @@ async function applyRandomRange() {
 }
 
 async function clearManualData() {
-  try { await clearDeviceManualData(route.params.id); await setDeviceMode(route.params.id, 'NORMAL'); simMode.value = 'NORMAL'; ElMessage.success('已清除并恢复正常模式') }
-  catch (error) { console.error('清除失败:', error) }
+  try {
+    await clearDeviceManualData(route.params.id)
+    await setDeviceMode(route.params.id, 'NORMAL')
+    simMode.value = 'NORMAL'
+    await resetSimMode(route.params.id)
+    sensorSimMode.value = 'STABLE'
+    ElMessage.success('已清除并恢复稳定模式')
+  } catch (error) { console.error('清除失败:', error) }
 }
 
 async function loadCurrentValues() {
@@ -271,7 +378,7 @@ async function handleStop() {
 function goBack() { router.back() }
 
 onMounted(() => {
-  loadDevice(); loadMaintenance(); loadTrendChart(); loadMetrics(); loadSimulationStatus(); loadCurrentValues(); initChart()
+  loadDevice(); loadMaintenance(); loadTrendChart(); loadFaultProbChart(); loadMetrics(); loadSimulationStatus(); loadCurrentValues(); initChart()
   refreshTimer = setInterval(() => { loadMetrics(); loadCurrentValues() }, 5000)
 })
 

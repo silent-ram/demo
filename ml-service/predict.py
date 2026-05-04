@@ -84,9 +84,18 @@ class FaultPredictor:
         loaded_new = False
         device_types = self._metadata.get('device_types', list(DEVICE_PROFILES.keys()))
 
+        from model_version_manager import get_version_manager
+        version_manager = get_version_manager()
+
         for dtype in device_types:
-            model_path = os.path.join(MODEL_ROOT, dtype, 'fault_model.pkl')
-            scaler_path = os.path.join(MODEL_ROOT, dtype, 'scaler.pkl')
+            # 优先从版本管理加载当前激活版本
+            active_version = version_manager.get_active_version(dtype)
+            if active_version:
+                model_path = os.path.join(MODEL_ROOT, dtype, active_version, 'fault_model.pkl')
+                scaler_path = os.path.join(MODEL_ROOT, dtype, active_version, 'scaler.pkl')
+            else:
+                model_path = os.path.join(MODEL_ROOT, dtype, 'fault_model.pkl')
+                scaler_path = os.path.join(MODEL_ROOT, dtype, 'scaler.pkl')
 
             if os.path.exists(model_path):
                 try:

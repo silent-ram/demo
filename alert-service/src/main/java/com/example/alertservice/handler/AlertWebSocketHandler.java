@@ -73,25 +73,44 @@ public class AlertWebSocketHandler extends TextWebSocketHandler {
      * 广播告警给所有已认证的 WebSocket 客户端
      */
     public void broadcastAlert(Alert alert) {
+        broadcastPayload(alertToPayload(alert, null));
+    }
+
+    /**
+     * 广播带有关联上下文的告警（含维修记录等）
+     */
+    public void broadcastAlertContext(Alert alert, Map<String, Object> context) {
+        Map<String, Object> payload = alertToPayload(alert, context);
+        broadcastPayload(payload);
+    }
+
+    private Map<String, Object> alertToPayload(Alert alert, Map<String, Object> context) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("id", alert.getId());
+        payload.put("deviceId", alert.getDeviceId());
+        payload.put("deviceName", alert.getDeviceName() != null ? alert.getDeviceName() : "");
+        payload.put("faultProbability", alert.getFaultProbability() != null ? alert.getFaultProbability().toString() : "0");
+        payload.put("alertLevel", alert.getAlertLevel() != null ? alert.getAlertLevel() : "MEDIUM");
+        payload.put("type", alert.getType() != null ? alert.getType() : "");
+        payload.put("message", alert.getMessage() != null ? alert.getMessage() : "");
+        payload.put("resolved", false);
+        payload.put("createdAt", alert.getCreatedAt() != null ? alert.getCreatedAt().toString() : "");
+        if (context != null && !context.isEmpty()) {
+            payload.put("context", context);
+        }
+        return payload;
+    }
+
+    private void broadcastPayload(Map<String, Object> payload) {
         int openCount = 0;
         for (WebSocketSession s : sessions) {
             if (s.isOpen()) openCount++;
         }
-        log.info("Broadcasting alert {} to {} open sessions (total {})", alert.getId(), openCount, sessions.size());
+        log.info("Broadcasting alert {} to {} open sessions (total {})", payload.get("id"), openCount, sessions.size());
 
         for (WebSocketSession session : sessions) {
             if (session.isOpen()) {
                 try {
-                    Map<String, Object> payload = new HashMap<>();
-                    payload.put("id", alert.getId());
-                    payload.put("deviceId", alert.getDeviceId());
-                    payload.put("deviceName", alert.getDeviceName() != null ? alert.getDeviceName() : "");
-                    payload.put("faultProbability", alert.getFaultProbability() != null ? alert.getFaultProbability().toString() : "0");
-                    payload.put("alertLevel", alert.getAlertLevel() != null ? alert.getAlertLevel() : "MEDIUM");
-                    payload.put("type", alert.getType() != null ? alert.getType() : "");
-                    payload.put("message", alert.getMessage() != null ? alert.getMessage() : "");
-                    payload.put("resolved", false);
-                    payload.put("createdAt", alert.getCreatedAt() != null ? alert.getCreatedAt().toString() : "");
                     String json = objectMapper.writeValueAsString(payload);
                     session.sendMessage(new TextMessage(json));
                 } catch (IOException e) {

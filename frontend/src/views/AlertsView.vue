@@ -199,16 +199,19 @@ const faultCategories = [
 async function loadAlerts() {
   loading.value = true
   try {
-    const res = await getAlertList({ page: pagination.page, size: pagination.size })
-    let list = res.data.records || []
-
+    const params = {
+      page: pagination.page,
+      size: pagination.size
+    }
     if (filters.level) {
-      list = list.filter(a => a.alertLevel === filters.level)
+      params.level = filters.level
     }
     if (filters.resolved !== null && filters.resolved !== '') {
-      list = list.filter(a => a.resolved === filters.resolved)
+      params.resolved = filters.resolved
     }
 
+    const res = await getAlertList(params)
+    const list = res.data.records || []
     alertList.value = list
     pagination.total = res.data.total || 0
     alertStore.setAlerts(list)

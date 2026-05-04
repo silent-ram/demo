@@ -109,3 +109,35 @@ export function getDeviceMode(deviceId) {
     method: 'get'
   })
 }
+
+// ========== 新增：传感模拟模式控制 ==========
+
+export function setSimMode(deviceId, mode) {
+  return request({
+    url: `/collector/simulate/device/${deviceId}/sim-mode`,
+    method: 'post',
+    params: { mode }
+  })
+}
+
+export function getSimMode(deviceId) {
+  return request({
+    url: `/collector/simulate/device/${deviceId}/sim-mode`,
+    method: 'get'
+  })
+}
+
+export function resetSimMode(deviceId) {
+  return request({
+    url: `/collector/simulate/device/${deviceId}/sim-mode/reset`,
+    method: 'post'
+  })
+}
+
+export function getFaultProbabilityHistory(deviceId, hours = 24) {
+  return request({
+    url: `/collector/fault-probability-history/${deviceId}`,
+    method: 'get',
+    params: { hours }
+  })
+}

@@ -210,6 +210,15 @@ public class CollectorController {
         return result;
     }
 
+    @GetMapping("/fault-probability-history/{deviceId}")
+    @Operation(summary = "查询故障概率历史", description = "查询指定设备最近 N 小时的故障概率历史数据（5分钟聚合）")
+    public Result<List<Map<String, Object>>> getFaultProbabilityHistory(
+            @PathVariable String deviceId,
+            @RequestParam(required = false, defaultValue = "24") int hours) {
+        List<Map<String, Object>> history = influxDBService.queryFaultProbabilityHistory(deviceId, hours);
+        return Result.success(history);
+    }
+
     @GetMapping("/simulate/device/{deviceId}/mode")
     @Operation(summary = "获取设备模拟模式", description = "获取指定设备的当前模拟模式")
     public Result<Map<String, Object>> getDeviceMode(@PathVariable String deviceId) {
@@ -217,6 +226,55 @@ public class CollectorController {
         result.put("deviceId", deviceId);
         result.put("mode", sensorSimulator.getDeviceMode(deviceId));
         result.put("running", sensorSimulator.isDeviceRunning(deviceId));
+        return Result.success(result);
+    }
+
+    // ========== 新增：传感模拟模式控制（STABLE/DEGRADING_SLOW/DEGRADING_FAST/SUDDEN_FAULT/SPIKE_RECOVER）==========
+
+    @PostMapping("/simulate/device/{deviceId}/sim-mode")
+    @Operation(summary = "设置传感模拟模式", description = "设置设备的传感模拟模式：STABLE(稳定运行), DEGRADING_SLOW(缓慢劣化), DEGRADING_FAST(快速劣化), SUDDEN_FAULT(突发故障), SPIKE_RECOVER(偶发异常)")
+    public Result<Map<String, Object>> setSimMode(@PathVariable String deviceId, @RequestParam String mode) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            sensorSimulator.setSimMode(deviceId, mode);
+            SensorSimulator.SimMode simMode = sensorSimulator.getSimMode(deviceId);
+            result.put("deviceId", deviceId);
+            result.put("mode", simMode.name());
+            result.put("desc", simMode.getDesc());
+            result.put("canTriggerAlert", simMode.canTriggerAlert());
+            result.put("success", true);
+            return Result.success(result);
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("message", "设置失败: " + e.getMessage());
+            return Result.success(result);
+        }
+    }
+
+    @GetMapping("/simulate/device/{deviceId}/sim-mode")
+    @Operation(summary = "获取传感模拟模式", description = "获取指定设备的当前传感模拟模式")
+    public Result<Map<String, Object>> getSimMode(@PathVariable String deviceId) {
+        Map<String, Object> result = new HashMap<>();
+        SensorSimulator.SimMode simMode = sensorSimulator.getSimMode(deviceId);
+        result.put("deviceId", deviceId);
+        result.put("mode", simMode.name());
+        result.put("desc", simMode.getDesc());
+        result.put("canTriggerAlert", simMode.canTriggerAlert());
+        result.put("faultProbability", sensorSimulator.getFaultProbability(deviceId));
+        result.put("running", sensorSimulator.isDeviceRunning(deviceId));
+        return Result.success(result);
+    }
+
+    @PostMapping("/simulate/device/{deviceId}/sim-mode/reset")
+    @Operation(summary = "重置为稳定运行", description = "将设备的传感模拟模式重置为 STABLE，并将传感器值平滑恢复到基线")
+    public Result<Map<String, Object>> resetSimMode(@PathVariable String deviceId) {
+        Map<String, Object> result = new HashMap<>();
+        sensorSimulator.resetToStable(deviceId);
+        SensorSimulator.SimMode simMode = sensorSimulator.getSimMode(deviceId);
+        result.put("deviceId", deviceId);
+        result.put("mode", simMode.name());
+        result.put("desc", simMode.getDesc());
+        result.put("success", true);
         return Result.success(result);
     }
 }

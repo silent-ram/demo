@@ -15,13 +15,16 @@ export function getAlert(id) {
   })
 }
 
-export function resolveAlert(id, resolveNote = '', resolveType = 'COMPLETED') {
+export function resolveAlert(id, resolveNote = '', resolveType = 'COMPLETED', maintenanceType = '', faultCategory = '', description = '') {
   return request({
     url: `/alert/${id}/resolve`,
     method: 'put',
     params: {
       resolveNote,
-      resolveType
+      resolveType,
+      maintenanceType,
+      faultCategory,
+      description
     }
   })
 }

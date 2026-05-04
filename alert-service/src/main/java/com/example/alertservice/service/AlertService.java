@@ -70,8 +70,18 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
     // 用于远程调用失败后的异步补偿
     private final Map<Long, Map<String, Object>> compensationTasks = new ConcurrentHashMap<>();
 
-    public Page<Alert> page(com.baomidou.mybatisplus.extension.plugins.pagination.Page<Alert> page) {
-        return alertMapper.selectPage(page, null);
+    public Page<Alert> listAlerts(int page, int size, String level, Boolean resolved) {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Alert> pageParam =
+            new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, size);
+        QueryWrapper<Alert> wrapper = new QueryWrapper<>();
+        if (level != null && !level.isEmpty()) {
+            wrapper.eq("alert_level", level);
+        }
+        if (resolved != null) {
+            wrapper.eq("resolved", resolved);
+        }
+        wrapper.orderByDesc("created_at");
+        return alertMapper.selectPage(pageParam, wrapper);
     }
 
     @Scheduled(fixedRate = 10000)
@@ -178,9 +188,10 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
 
         messagingTemplate.convertAndSend("/topic/alerts", alert);
 
-        // 同时通过原生WebSocket广播
+        // 同时通过原生WebSocket广播（关联维修记录上下文）
         try {
-            alertWebSocketHandler.broadcastAlert(alert);
+            Map<String, Object> context = buildAlertContext(alert);
+            alertWebSocketHandler.broadcastAlertContext(alert, context);
         } catch (Exception e) {
             log.error("WebSocket广播失败", e);
         }
@@ -191,6 +202,46 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         } catch (Exception e) {
             log.error("发送消息通知失败", e);
         }
+    }
+
+    /**
+     * 构建告警关联上下文（维修记录等）
+     */
+    private Map<String, Object> buildAlertContext(Alert alert) {
+        Map<String, Object> context = new HashMap<>();
+        Long deviceId = alert.getDeviceId();
+        if (deviceId == null) {
+            return context;
+        }
+
+        try {
+            Map<String, Object> result = deviceServiceClient.getMaintenancesByDevice(deviceId);
+            if (result != null && result.get("data") != null) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> records = (List<Map<String, Object>>) result.get("data");
+                if (records != null && !records.isEmpty()) {
+                    // 取最近3条维修记录
+                    List<Map<String, Object>> recent = records.stream()
+                        .limit(3)
+                        .map(r -> {
+                            Map<String, Object> m = new HashMap<>();
+                            m.put("type", r.get("type"));
+                            m.put("description", r.get("description"));
+                            m.put("actionTaken", r.get("actionTaken"));
+                            m.put("repairedAt", r.get("repairedAt"));
+                            m.put("status", r.get("status"));
+                            return m;
+                        })
+                        .toList();
+                    context.put("maintenanceHistory", recent);
+                    context.put("maintenanceCount", records.size());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询设备 {} 维修记录失败: {}", deviceId, e.getMessage());
+        }
+
+        return context;
     }
 
     /**
