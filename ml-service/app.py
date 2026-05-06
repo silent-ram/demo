@@ -7,14 +7,12 @@ import os
 import json
 import requests
 
-from train import train_all_models, train_all_with_real_data
+from train import train_all_with_real_data, train_single_device_type
 from predict import (
     predictor, predict_fault, predict_with_raw,
     FaultPredictor, FeatureExtractor, DEVICE_PROFILES
 )
-from chart import generate_trend_chart, generate_multi_device_chart
-from pseudo_label_engine import get_pseudo_engine
-from hybrid_trainer import HybridTrainer
+from chart import generate_trend_chart
 from model_version_manager import get_version_manager
 
 app = Flask(__name__)
@@ -168,14 +166,6 @@ def predict():
             return jsonify({'success': False, 'message': result['error'], 'data': None}), 500
 
         fault_probability = result['fault_probability']
-
-        # 触发伪标签引擎
-        if 'error' not in result and result.get('features'):
-            try:
-                pseudo_engine = get_pseudo_engine()
-                pseudo_engine.on_prediction(device_type, result['features'], fault_probability)
-            except Exception as e:
-                app.logger.warning('伪标签引擎调用失败: %s', e)
 
         return jsonify({
             'success': True,
@@ -345,39 +335,35 @@ def get_model_metrics():
 @limiter.limit("1 per hour")
 @require_api_key
 def retrain_model():
-    """重新训练所有设备类型的模型。
+    """重新训练模型。可选指定单个设备类型，不指定则训练全部。
 
-    请求体:
+    请求体（可选）:
     {
-        "mode": "hybrid"  // "simulated" | "hybrid"，默认 "simulated"
+        "device_type": "工业机器人"  // 不传则训练所有类型
     }
     """
     try:
-        data = request.get_json() or {}
-        mode = data.get('mode', 'simulated')
+        data = request.get_json(silent=True) or {}
+        device_type = data.get('device_type')
 
-        # 清空历史缓存（避免旧缓存影响新模型推理）
         _sensor_history.clear()
 
-        if mode == 'hybrid':
-            trainer = HybridTrainer(pseudo_engine=get_pseudo_engine())
-            metadata = trainer.train_all_hybrid(n_sim_samples=5000)
-        elif mode == 'real-data':
-            # 从 InfluxDB 读取真实数据训练（毕设核心要求）
-            metadata = train_all_with_real_data(
-                min_samples=100, influx_hours=168, n_sim_samples=5000
-            )
+        if device_type:
+            result = train_single_device_type(device_type, min_samples=500, influx_hours=168)
+            predictor.reload()
+            return jsonify({
+                'success': True,
+                'message': f'{device_type} 模型训练成功',
+                'data': {device_type: result}
+            })
         else:
-            metadata = train_all_models(n_samples=5000)
-
-        # 重新加载所有模型到内存
-        predictor.reload()
-
-        return jsonify({
-            'success': True,
-            'message': f'模型重新训练成功 (mode={mode})',
-            'data': metadata.get('device_results' if mode == 'hybrid' else 'device_metrics', {})
-        })
+            metadata = train_all_with_real_data(min_samples=500, influx_hours=168)
+            predictor.reload()
+            return jsonify({
+                'success': True,
+                'message': '全部模型训练成功',
+                'data': metadata.get('device_results', {})
+            })
 
     except Exception as e:
         app.logger.error(f"模型训练失败: {e}", exc_info=True)
@@ -435,25 +421,6 @@ def rollback_model():
     except Exception as e:
         app.logger.error(f"回滚失败: {e}", exc_info=True)
         return jsonify({'success': False, 'message': f'回滚失败: {str(e)}', 'data': None}), 500
-
-
-@app.route('/ml/model/labeling-status', methods=['GET'])
-def get_labeling_status():
-    """获取伪标签统计。"""
-    try:
-        pseudo_engine = get_pseudo_engine()
-        stats = pseudo_engine.get_statistics()
-        totals = pseudo_engine.get_total_counts()
-        return jsonify({
-            'success': True,
-            'data': {
-                'statistics': stats,
-                'totals': totals
-            }
-        })
-    except Exception as e:
-        app.logger.error(f"获取伪标签统计失败: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e), 'data': None}), 500
 
 
 @app.route('/ml/chart/fault-probability', methods=['GET'])

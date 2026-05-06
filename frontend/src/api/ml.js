@@ -31,12 +31,12 @@ export function getModelMetrics() {
   })
 }
 
-export function retrainModel(mode = 'hybrid') {
+export function retrainModel(deviceType) {
   return request({
     url: '/ml/model/retrain',
     method: 'post',
     headers: { 'X-API-Key': 'myDefaultMLApiKey' },
-    data: { mode }
+    data: deviceType ? { device_type: deviceType } : {}
   })
 }
 
@@ -53,13 +53,6 @@ export function rollbackModel(data) {
     method: 'post',
     headers: { 'X-API-Key': 'myDefaultMLApiKey' },
     data
-  })
-}
-
-export function getLabelingStatus() {
-  return request({
-    url: '/ml/model/labeling-status',
-    method: 'get'
   })
 }
 

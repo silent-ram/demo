@@ -112,7 +112,10 @@ public class InfluxDBService {
                 "|> filter(fn: (r) => r[\"_measurement\"] == \"%s\") " +
                 "|> filter(fn: (r) => r[\"device_id\"] == \"%s\") " +
                 "|> filter(fn: (r) => r[\"_field\"] == \"value\") " +
-                "|> pivot(rowKey: [\"_time\"], columnKey: [\"metric_name\"], valueColumn: \"_value\")",
+                "|> pivot(rowKey: [\"_time\"], columnKey: [\"metric_name\"], valueColumn: \"_value\") " +
+                "|> sort(columns: [\"_time\"], desc: true) " +
+                "|> limit(n: 30) " +
+                "|> sort(columns: [\"_time\"])",
                 bucket,
                 startTime.toString(),
                 endTime.toString(),

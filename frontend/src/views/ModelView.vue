@@ -10,28 +10,16 @@
             </div>
           </template>
           <div class="control-section">
-            <el-radio-group v-model="trainMode" style="margin-right: 20px;">
-              <el-radio-button label="simulated">纯模拟训练</el-radio-button>
-              <el-radio-button label="hybrid">混合训练（推荐）</el-radio-button>
-            </el-radio-group>
             <el-button type="primary" :loading="retrainLoading" @click="handleRetrain">
               <el-icon><Refresh /></el-icon>
-              开始重训练
+              开始训练
             </el-button>
-            <el-button @click="loadLabelingStatus" :loading="labelingLoading">
-              刷新标注统计
+            <el-button @click="loadMetrics" :loading="metricsLoading">
+              刷新指标
             </el-button>
-          </div>
-          <div v-if="labelingStats.totals" class="labeling-stats">
-            <el-descriptions :column="3" border size="small">
-              <el-descriptions-item label="伪标签正样本">{{ labelingStats.totals.total_positive }}</el-descriptions-item>
-              <el-descriptions-item label="负样本">{{ labelingStats.totals.total_negative }}</el-descriptions-item>
-              <el-descriptions-item label="总样本">{{ labelingStats.totals.total }}</el-descriptions-item>
-            </el-descriptions>
           </div>
           <p class="tip">
-            混合训练会自动将系统运行中收集的伪标签样本与模拟数据按比例混合后训练新模型。
-            只有当新模型 F1 分数优于旧模型 95% 时才会自动替换。
+            从 InfluxDB 读取真实传感器数据 + fault_probability 标签训练模型。标签规则：连续5点 fault_probability >= 0.7 为故障，连续5点 <= 0.1 为正常。新模型 F1 不低于旧模型 95% 时自动替换。
           </p>
         </el-card>
       </el-col>
@@ -44,26 +32,23 @@
           <template #header>
             <div class="card-header-flex">
               <span class="card-title">{{ model.deviceType }}</span>
-              <el-tag :type="model.replaced ? 'success' : 'info'" size="small">
-                {{ model.replaced ? '已更新' : '当前版本' }}
-              </el-tag>
+              <div class="card-actions">
+                <el-button size="small" type="primary" :loading="singleTrainLoading[model.deviceType]" @click="handleRetrainSingle(model.deviceType)">训练</el-button>
+                <el-tag :type="model.replaced ? 'success' : 'info'" size="small">
+                  {{ model.replaced ? '已更新' : '当前版本' }}
+                </el-tag>
+              </div>
             </div>
           </template>
 
           <div class="version-info">
             <el-descriptions :column="1" border size="small">
               <el-descriptions-item label="当前版本">{{ model.version || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="真实样本">
-                {{ model.realSamples ? model.realSamples.total : 0 }}
-                <span v-if="model.realSamples" class="sample-detail">
-                  (正{{model.realSamples.positive}}/负{{model.realSamples.negative}})
+              <el-descriptions-item label="InfluxDB 数据量">
+                {{ model.influxSamples || 0 }}
+                <span v-if="model.influxPositive !== undefined" class="sample-detail">
+                  (故障{{ model.influxPositive }}/正常{{ model.influxNegative }})
                 </span>
-              </el-descriptions-item>
-              <el-descriptions-item label="混合比例">
-                <span v-if="model.realRatio !== undefined">
-                  真实 {{ (model.realRatio * 100).toFixed(0) }}%
-                </span>
-                <span v-else>纯模拟</span>
               </el-descriptions-item>
             </el-descriptions>
           </div>
@@ -77,10 +62,10 @@
                   {{ model.metrics?.f1_score?.toFixed(4) || '--' }}
                 </div>
                 <div class="metric-label">F1 Score</div>
-                <div v-if="model.improvement?.f1_score !== undefined" class="improvement-tag"
-                     :class="model.improvement.f1_score > 0 ? 'up' : 'down'">
-                  {{ model.improvement.f1_score > 0 ? '+' : '' }}
-                  {{ (model.improvement.f1_score * 100).toFixed(2) }}%
+                <div v-if="model.improvement?.f1 !== undefined" class="improvement-tag"
+                     :class="model.improvement.f1 > 0 ? 'up' : 'down'">
+                  {{ model.improvement.f1 > 0 ? '+' : '' }}
+                  {{ (model.improvement.f1 * 100).toFixed(2) }}%
                 </div>
               </div>
             </el-col>
@@ -178,20 +163,18 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getModelMetrics, retrainModel, getModelVersions, getLabelingStatus } from '@/api/ml'
+import { getModelMetrics, retrainModel, getModelVersions } from '@/api/ml'
 import { getThreshold, updateThreshold } from '@/api/alert'
 
-const trainMode = ref('hybrid')
 const retrainLoading = ref(false)
-const labelingLoading = ref(false)
+const singleTrainLoading = reactive({})
+const metricsLoading = ref(false)
 const versionsLoading = ref(false)
-const labelingStats = ref({ totals: null, statistics: {} })
 const allMetrics = ref({})
 const allVersions = ref({})
 
 const thresholdForm = reactive({ value: 0.7 })
 
-// 模型列表（6个设备类型）
 const modelList = computed(() => {
   const deviceTypes = ['工业机器人', '数控机床', '输送设备', '焊接设备', '压力设备', '包装设备']
   const metrics = allMetrics.value.device_metrics || {}
@@ -206,20 +189,16 @@ const modelList = computed(() => {
       deviceType: dtype,
       version: activeVersion ? activeVersion.version : (data.version || 'v1'),
       replaced: data.should_replace || false,
-      improved: (data.improvement?.f1_score || 0) > 0,
+      improved: (data.improvement?.f1 || 0) > 0,
       metrics: data.new_metrics || data || {},
       improvement: data.improvement || {},
-      realSamples: data.mix_info ? {
-        total: data.mix_info.real_positive + data.mix_info.real_negative,
-        positive: data.mix_info.real_positive,
-        negative: data.mix_info.real_negative
-      } : null,
-      realRatio: data.mix_info ? data.mix_info.real_ratio : 0
+      influxSamples: data.data_info?.real_samples || data.training_samples || 0,
+      influxPositive: data.data_info?.positive ?? data.new_metrics?.positive_samples,
+      influxNegative: data.data_info?.negative ?? data.new_metrics?.negative_samples,
     }
   })
 })
 
-// 版本历史
 const versionHistory = computed(() => {
   const history = []
   for (const [dtype, versions] of Object.entries(allVersions.value)) {
@@ -230,7 +209,6 @@ const versionHistory = computed(() => {
       })
     })
   }
-  // 按训练时间倒序
   return history.sort((a, b) => {
     const ta = a.trained_at ? new Date(a.trained_at) : new Date(0)
     const tb = b.trained_at ? new Date(b.trained_at) : new Date(0)
@@ -239,10 +217,12 @@ const versionHistory = computed(() => {
 })
 
 async function loadMetrics() {
+  metricsLoading.value = true
   try {
     const res = await getModelMetrics()
     allMetrics.value = res.data || {}
   } catch (error) { console.error('加载模型指标失败:', error) }
+  finally { metricsLoading.value = false }
 }
 
 async function loadVersions() {
@@ -254,33 +234,38 @@ async function loadVersions() {
   finally { versionsLoading.value = false }
 }
 
-async function loadLabelingStatus() {
-  labelingLoading.value = true
-  try {
-    const res = await getLabelingStatus()
-    if (res.data) {
-      labelingStats.value = {
-        totals: res.data.totals,
-        statistics: res.data.statistics
-      }
-    }
-  } catch (error) { console.error('加载标注统计失败:', error) }
-  finally { labelingLoading.value = false }
-}
-
 async function handleRetrain() {
   retrainLoading.value = true
   try {
-    const res = await retrainModel(trainMode.value)
+    const res = await retrainModel()
     allMetrics.value = res.data || {}
-    ElMessage.success(`模型重新训练成功 (mode=${trainMode.value})`)
-    // 刷新版本列表
+    ElMessage.success('模型训练成功')
     await loadVersions()
   } catch (error) {
-    console.error('重新训练失败:', error)
-    ElMessage.error('重新训练失败')
+    console.error('训练失败:', error)
+    ElMessage.error('模型训练失败')
   } finally {
     retrainLoading.value = false
+  }
+}
+
+async function handleRetrainSingle(deviceType) {
+  singleTrainLoading[deviceType] = true
+  try {
+    const res = await retrainModel(deviceType)
+    const result = res.data || {}
+    // Merge single result into allMetrics
+    allMetrics.value = {
+      ...allMetrics.value,
+      device_results: { ...(allMetrics.value.device_results || {}), ...result }
+    }
+    ElMessage.success(`${deviceType} 模型训练成功`)
+    await loadVersions()
+  } catch (error) {
+    console.error('训练失败:', error)
+    ElMessage.error(`${deviceType} 模型训练失败`)
+  } finally {
+    singleTrainLoading[deviceType] = false
   }
 }
 
@@ -309,7 +294,6 @@ function getMetricClass(value) {
 onMounted(() => {
   loadMetrics()
   loadVersions()
-  loadLabelingStatus()
   loadThreshold()
 })
 </script>
@@ -318,8 +302,8 @@ onMounted(() => {
 .model-management { padding: 20px; }
 .card-title { font-family: 'Playfair Display', Georgia, serif; font-size: 16px; font-weight: 600; color: #2d2a26; }
 .card-header-flex { display: flex; justify-content: space-between; align-items: center; }
+.card-actions { display: flex; align-items: center; gap: 8px; }
 .control-section { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
-.labeling-stats { margin-bottom: 15px; }
 .tip { font-size: 12px; color: #9a948c; margin-top: 10px; }
 
 .model-card { transition: all 0.3s; }

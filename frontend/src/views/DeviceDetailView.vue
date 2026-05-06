@@ -203,7 +203,7 @@ const modeDescriptions = {
 }
 
 async function loadDevice() {
-  try { const res = await getDevice(route.params.id); device.value = res.data || {}; simulationEnabled.value = device.value.simulationEnabled || false }
+  try { const res = await getDevice(route.params.id); device.value = res.data || {}; simulationEnabled.value = device.value.simulationEnabled || false; checkPollingState() }
   catch (error) { console.error('加载设备信息失败:', error) }
 }
 
@@ -352,10 +352,13 @@ function initChart() {
 
 function updateChart() {
   if (!chart || metricsData.value.length === 0) return
-  const times = metricsData.value.slice(-20).map(m => { const date = new Date(m.timestamp); return `${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}` })
-  const temperatures = metricsData.value.slice(-20).map(m => m.temperature)
-  const vibrations = metricsData.value.slice(-20).map(m => m.vibration)
-  const pressures = metricsData.value.slice(-20).map(m => m.pressure)
+  // Sort by timestamp, then take last 20
+  const sorted = [...metricsData.value].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+  const recent = sorted.slice(-20)
+  const times = recent.map(m => { const date = new Date(m.timestamp); return `${date.getHours()}:${String(date.getMinutes()).padStart(2,'0')}:${String(date.getSeconds()).padStart(2,'0')}` })
+  const temperatures = recent.map(m => m.temperature)
+  const vibrations = recent.map(m => m.vibration)
+  const pressures = recent.map(m => m.pressure)
   chart.setOption({ xAxis: [{ data: times }, { data: times }, { data: times }], series: [{ data: temperatures }, { data: vibrations }, { data: pressures }] })
 }
 
@@ -366,23 +369,38 @@ function getFaultClass(prob) { if (prob >= 0.7) return 'danger'; if (prob >= 0.5
 function getMaintenanceTypeText(type) { const map = { 'ROUTINE': '日常保养', 'REPAIR': '故障维修', 'EMERGENCY': '紧急抢修', 'UPGRADE': '改造升级', 'INSPECTION': '点检' }; return map[type] || type || '-' }
 
 async function handleStart() {
-  try { await updateDeviceStatus(device.value.id, 'RUNNING'); await updateDeviceSimulation(device.value.id, true); ElMessage.success('设备已启动'); await loadDevice() }
+  try { await updateDeviceStatus(device.value.id, 'RUNNING'); await updateDeviceSimulation(device.value.id, true); ElMessage.success('设备已启动'); await loadDevice(); startPolling() }
   catch (error) { console.error('启动失败:', error); ElMessage.error('启动失败') }
 }
 
 async function handleStop() {
-  try { await updateDeviceStatus(device.value.id, 'OFFLINE'); await updateDeviceSimulation(device.value.id, false); ElMessage.success('设备已停机'); await loadDevice() }
+  try { stopPolling(); await updateDeviceStatus(device.value.id, 'OFFLINE'); await updateDeviceSimulation(device.value.id, false); ElMessage.success('设备已停机'); await loadDevice() }
   catch (error) { console.error('停机失败:', error); ElMessage.error('停机失败') }
 }
 
 function goBack() { router.back() }
 
-onMounted(() => {
-  loadDevice(); loadMaintenance(); loadTrendChart(); loadFaultProbChart(); loadMetrics(); loadSimulationStatus(); loadCurrentValues(); initChart()
+function startPolling() {
+  stopPolling()
   refreshTimer = setInterval(() => { loadMetrics(); loadCurrentValues() }, 5000)
+}
+
+function stopPolling() {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+}
+
+function checkPollingState() {
+  const running = device.value.status === 'NORMAL' || device.value.status === 'RUNNING'
+  if (running && !refreshTimer) startPolling()
+  else if (!running && refreshTimer) stopPolling()
+}
+
+onMounted(() => {
+  loadDevice().then(() => checkPollingState())
+  loadMaintenance(); loadTrendChart(); loadFaultProbChart(); loadMetrics(); loadSimulationStatus(); loadCurrentValues(); initChart()
 })
 
-onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); chart?.dispose() })
+onUnmounted(() => { stopPolling(); chart?.dispose() })
 </script>
 
 <style scoped>

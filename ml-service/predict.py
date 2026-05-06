@@ -177,6 +177,13 @@ class FaultPredictor:
                     'error': f'特征维度异常: 期望{self.EXPECTED_FEATURE_COUNT}, 实际{len(features)}'}
 
         proba = predictor.predict(features)
+
+        # 规则下限：多传感器同时超阈值时，模型概率不应过低
+        # 解决"持续故障状态 → trend/volatility≈0 → 模型误判为正常"的问题
+        rule_score = self._rule_score_from_features(device_type, features)
+        if rule_score > 0 and proba < rule_score * 0.8:
+            proba = max(proba, rule_score * 0.8)
+
         return {
             'fault_probability': proba,
             'features': features,
@@ -227,6 +234,31 @@ class FaultPredictor:
             score += 0.3
         if pressure > profile['pressure']['threshold']:
             score += 0.3
+
+        return min(score, 0.95)
+
+    def _rule_score_from_features(self, device_type: str, features: list) -> float:
+        """从15维特征中的 current 和 accumulation 计算规则得分。
+
+        特征布局: [temp_current, temp_trend, ..., temp_moving_avg,
+                   vib_current, ..., vib_moving_avg,
+                   pres_current, ..., pres_moving_avg]
+        每个 sensor 5维: current(0), trend(1), volatility(2), accumulation(3), moving_avg(4)
+        """
+        profile = DEVICE_PROFILES.get(device_type, DEVICE_PROFILES['工业机器人'])
+        score = 0.0
+
+        sensors = [
+            ('temperature', 0, 0.4),
+            ('vibration', 5, 0.3),
+            ('pressure', 10, 0.3),
+        ]
+        for name, offset, weight in sensors:
+            current = features[offset]       # current
+            accumulation = int(features[offset + 3])  # accumulation
+            threshold = profile[name]['threshold']
+            if current > threshold or accumulation >= 3:
+                score += weight
 
         return min(score, 0.95)
 
