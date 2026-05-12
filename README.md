@@ -77,7 +77,7 @@ demo/
 ├── alert-service/              # 告警生成/合并/升级 + WebSocket (8084)
 ├── ml-service/                 # Python Flask ML 服务 (5000)
 │   ├── app.py                  # Flask 入口 + API 路由
-│   ├── train.py                # 模型训练入口（真实数据 + 模拟数据混合）
+│   ├── train.py                # 模型训练入口（InfluxDB 真实数据）
 │   ├── predict.py              # 15 维特征提取 + 6 类设备预测路由
 │   ├── data_fetcher.py         # InfluxDB 数据提取器
 │   ├── chart.py                # Matplotlib 图表生成
@@ -119,7 +119,7 @@ demo/
 
 1. 从 InfluxDB 提取设备历史传感器数据 + `fault_probability` 标签
 2. 连续 5 点 fault_probability ≥ 0.7 标记为故障样本，≤ 0.1 为正常样本
-3. 真实数据不足时补充模拟数据，最少 500 条样本
+3. 滑动窗口提取 15 维特征，最少 500 条有效样本
 4. 训练新模型并与当前模型 F1 对比，不低于 95% 时自动替换
 
 ---
