@@ -18,9 +18,12 @@ public class MlServiceFallback implements MlServiceClient {
     public PredictResponse predict(PredictRequest request) {
         log.warn("ML Service unavailable, returning fallback response");
         PredictResponse response = new PredictResponse();
-        response.setIsFault(false);
-        response.setProbability(0.0);
+        response.setSuccess(false);
         response.setMessage("ML Service unavailable - fallback response");
+        PredictResponse.PredictionData data = new PredictResponse.PredictionData();
+        data.setFaultProbability(0.0);
+        data.setIsFault(false);
+        response.setData(data);
         return response;
     }
 

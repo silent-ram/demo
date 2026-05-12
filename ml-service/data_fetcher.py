@@ -110,6 +110,10 @@ class InfluxDBDataFetcher:
                 logger.warning('未知的设备类型: %s', device_type)
                 return []
 
+            # 按 device_type 过滤：通过 device_id → device_type 映射筛选
+            device_type_map = self._get_device_type_map()
+            results = [r for r in results if device_type_map.get(r.get('device_id', '')) == device_type]
+
         return results
 
     def _build_flux_query(self, device_id: str = None, hours: int = 168) -> str:

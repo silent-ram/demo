@@ -7,6 +7,7 @@ public class AlertStatisticsDTO {
     private Long total;
     private Map<String, Long> byLevel;
     private Map<String, Long> byDevice;
+    private Map<String, Long> byHour;
 
     public AlertStatisticsDTO() {
     }
@@ -39,5 +40,13 @@ public class AlertStatisticsDTO {
 
     public void setByDevice(Map<String, Long> byDevice) {
         this.byDevice = byDevice;
+    }
+
+    public Map<String, Long> getByHour() {
+        return byHour;
+    }
+
+    public void setByHour(Map<String, Long> byHour) {
+        this.byHour = byHour;
     }
 }

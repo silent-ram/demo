@@ -30,6 +30,9 @@ public interface AlertMapper extends BaseMapper<Alert> {
     @Select("SELECT device_id, device_name, COUNT(*) as count FROM t_alert WHERE created_at BETWEEN #{startDate} AND #{endDate} GROUP BY device_id, device_name")
     List<Map<String, Object>> countByDeviceAndDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
+    @Select("SELECT HOUR(created_at) as hour, COUNT(*) as count FROM t_alert WHERE created_at BETWEEN #{startDate} AND #{endDate} GROUP BY HOUR(created_at) ORDER BY hour")
+    List<Map<String, Object>> countByHourAndDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
+
     @Select("SELECT device_id as deviceId, device_name as deviceName, COUNT(*) as alertCount, " +
             "ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM t_alert WHERE created_at BETWEEN #{startDate} AND #{endDate}), 2) as faultRate " +
             "FROM t_alert WHERE created_at BETWEEN #{startDate} AND #{endDate} " +

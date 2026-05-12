@@ -1,9 +1,9 @@
 package com.example.alertservice.enums;
 
 public enum AlertLevel {
-    INFO("INFO"),
-    WARNING("WARNING"),
-    CRITICAL("CRITICAL");
+    LOW("LOW"),
+    MEDIUM("MEDIUM"),
+    HIGH("HIGH");
 
     private final String value;
 
@@ -21,7 +21,7 @@ public enum AlertLevel {
                 return level;
             }
         }
-        return INFO;
+        return LOW;
     }
 
     /**
@@ -29,14 +29,14 @@ public enum AlertLevel {
      */
     public AlertLevel nextLevel() {
         switch (this) {
-            case INFO:
-                return WARNING;
-            case WARNING:
-                return CRITICAL;
-            case CRITICAL:
-                return CRITICAL;
+            case LOW:
+                return MEDIUM;
+            case MEDIUM:
+                return HIGH;
+            case HIGH:
+                return HIGH;
             default:
-                return WARNING;
+                return MEDIUM;
         }
     }
 }

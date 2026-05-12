@@ -1,28 +1,18 @@
 package com.example.alertservice.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class PredictResponse {
-    private Boolean isFault;
-    private Double probability;
+    private Boolean success;
     private String message;
-    private String chartData;
+    private PredictionData data;
 
-    public PredictResponse() {
+    public Boolean getSuccess() {
+        return success;
     }
 
-    public Boolean getIsFault() {
-        return isFault;
-    }
-
-    public void setIsFault(Boolean isFault) {
-        this.isFault = isFault;
-    }
-
-    public Double getProbability() {
-        return probability;
-    }
-
-    public void setProbability(Double probability) {
-        this.probability = probability;
+    public void setSuccess(Boolean success) {
+        this.success = success;
     }
 
     public String getMessage() {
@@ -33,11 +23,35 @@ public class PredictResponse {
         this.message = message;
     }
 
-    public String getChartData() {
-        return chartData;
+    public PredictionData getData() {
+        return data;
     }
 
-    public void setChartData(String chartData) {
-        this.chartData = chartData;
+    public void setData(PredictionData data) {
+        this.data = data;
+    }
+
+    public static class PredictionData {
+        @JsonProperty("fault_probability")
+        private Double faultProbability;
+
+        @JsonProperty("is_fault")
+        private Boolean isFault;
+
+        public Double getFaultProbability() {
+            return faultProbability;
+        }
+
+        public void setFaultProbability(Double faultProbability) {
+            this.faultProbability = faultProbability;
+        }
+
+        public Boolean getIsFault() {
+            return isFault;
+        }
+
+        public void setIsFault(Boolean isFault) {
+            this.isFault = isFault;
+        }
     }
 }

@@ -121,7 +121,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { getAlertStats, getFrequencyStatistics } from '@/api/alert'
 import { getDeviceList } from '@/api/device'
@@ -155,13 +155,18 @@ async function loadStats() {
   }
 }
 
+function toLocalISOString(date) {
+  const pad = n => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 async function loadPieData() {
   try {
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
     const res = await getFrequencyStatistics({
-      startDate: start.toISOString(),
-      endDate: now.toISOString()
+      startDate: toLocalISOString(start),
+      endDate: toLocalISOString(now)
     })
     const byLevel = res.data.byLevel || {}
     pieChart.setOption({
@@ -190,31 +195,21 @@ async function loadLineData() {
     }
     const start = new Date(now.getTime() - 24 * 3600000)
     const res = await getFrequencyStatistics({
-      startDate: start.toISOString(),
-      endDate: now.toISOString()
+      startDate: toLocalISOString(start),
+      endDate: toLocalISOString(now)
     })
-    // frequency接口返回的是总数，没有按小时分布。先显示总量分布
-    const byLevel = res.data.byLevel || {}
+    const byHour = res.data.byHour || {}
+    const currentHour = now.getHours()
+    for (let i = 0; i < 24; i++) {
+      const hourLabel = (currentHour - 23 + i + 24) % 24
+      data[i] = byHour[hourLabel.toString()] || 0
+    }
     lineChart.setOption({
-      xAxis: { data: ['高危', '中危', '低危'] },
-      series: [{
-        data: [
-          byLevel.HIGH || 0,
-          byLevel.MEDIUM || 0,
-          byLevel.LOW || 0
-        ],
-        type: 'bar',
-        itemStyle: {
-          color: (params) => {
-            const colors = ['#d62828', '#f4a261', '#0077b6']
-            return colors[params.dataIndex]
-          },
-          borderRadius: [4, 4, 0, 0]
-        }
-      }]
+      xAxis: { data: hours },
+      series: [{ data }]
     })
   } catch (error) {
-    console.error('加载柱状图数据失败:', error)
+    console.error('加载趋势图数据失败:', error)
   }
 }
 
@@ -223,7 +218,7 @@ async function loadDeviceCount() {
     const res = await getDeviceList({ page: 1, size: 100 })
     const devices = res.data.records || []
     stats.value.deviceCount = devices.length
-    const normalCount = devices.filter(d => d.status === 'NORMAL').length
+    const normalCount = devices.filter(d => d.status === 'NORMAL' || d.status === 'RUNNING').length
     stats.value.normalRate = devices.length > 0
       ? ((normalCount / devices.length) * 100).toFixed(1)
       : 100
@@ -234,6 +229,7 @@ async function loadDeviceCount() {
 }
 
 function initPieChart() {
+  if (!pieChartRef.value) return
   pieChart = echarts.init(pieChartRef.value)
   const option = {
     tooltip: {
@@ -281,6 +277,7 @@ function initPieChart() {
 }
 
 function initLineChart() {
+  if (!lineChartRef.value) return
   lineChart = echarts.init(lineChartRef.value)
   const option = {
     tooltip: {
@@ -310,13 +307,20 @@ function initLineChart() {
     },
     series: [{
       data: [],
-      type: 'bar',
-      itemStyle: {
-        color: (params) => {
-          const colors = ['#d62828', '#f4a261', '#0077b6']
-          return colors[params.dataIndex]
-        },
-        borderRadius: [4, 4, 0, 0]
+      type: 'line',
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 6,
+      lineStyle: { width: 2, color: '#0077b6' },
+      itemStyle: { color: '#0077b6' },
+      areaStyle: {
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(0,119,182,0.25)' },
+            { offset: 1, color: 'rgba(0,119,182,0.02)' }
+          ]
+        }
       }
     }]
   }
@@ -331,10 +335,12 @@ function handleResize() {
 onMounted(() => {
   loadStats()
   loadDeviceCount()
-  initPieChart()
-  initLineChart()
-  loadPieData()
-  loadLineData()
+  nextTick(() => {
+    initPieChart()
+    initLineChart()
+    loadPieData()
+    loadLineData()
+  })
   window.addEventListener('resize', handleResize)
 })
 

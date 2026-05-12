@@ -69,7 +69,7 @@ public class AlertUpgradeScheduler {
     private void processAlertUpgrade(Alert alert) {
         String currentLevel = alert.getAlertLevel();
         if (currentLevel == null) {
-            currentLevel = "INFO";
+            currentLevel = "LOW";
         }
 
         // 获取当前级别的告警是否已经达到最高级别
@@ -77,7 +77,7 @@ public class AlertUpgradeScheduler {
         AlertLevel nextLevel = level.nextLevel();
 
         // 如果已经是最高级别，不再升级
-        if (nextLevel == level && !level.equals(AlertLevel.INFO)) {
+        if (nextLevel == level && !level.equals(AlertLevel.LOW)) {
             log.debug("告警ID {} 已达到最高级别 {}", alert.getId(), currentLevel);
             return;
         }
@@ -146,12 +146,12 @@ public class AlertUpgradeScheduler {
      */
     private int getDefaultTimeoutHours(String level) {
         switch (level.toUpperCase()) {
-            case "INFO":
-                return 24;  // INFO 级别默认 24 小时
-            case "WARNING":
-                return 12;  // WARNING 级别默认 12 小时
-            case "CRITICAL":
-                return 6;   // CRITICAL 级别默认 6 小时
+            case "LOW":
+                return 24;  // LOW 级别默认 24 小时
+            case "MEDIUM":
+                return 12;  // MEDIUM 级别默认 12 小时
+            case "HIGH":
+                return 6;   // HIGH 级别默认 6 小时
             default:
                 return 24;
         }

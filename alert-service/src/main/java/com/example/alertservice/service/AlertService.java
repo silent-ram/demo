@@ -570,7 +570,17 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
             byDevice.put(key, count);
         }
 
-        return new AlertStatisticsDTO(total, byLevel, byDevice);
+        Map<String, Long> byHour = new LinkedHashMap<>();
+        List<Map<String, Object>> hourCounts = alertMapper.countByHourAndDateRange(startDate, endDate);
+        for (Map<String, Object> item : hourCounts) {
+            String hour = item.get("hour") != null ? item.get("hour").toString() : "0";
+            Long count = item.get("count") != null ? ((Number) item.get("count")).longValue() : 0L;
+            byHour.put(hour, count);
+        }
+
+        AlertStatisticsDTO dto = new AlertStatisticsDTO(total, byLevel, byDevice);
+        dto.setByHour(byHour);
+        return dto;
     }
 
     public List<FailureRankDTO> getFailureRank(LocalDateTime startDate, LocalDateTime endDate, Integer limit) {
