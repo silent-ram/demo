@@ -1,11 +1,11 @@
 # 基于 Logistic 回归的工业设备故障预警系统
 
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.1.8-brightgreen)](https://spring.io/projects/spring-boot)
 [![Vue 3](https://img.shields.io/badge/Vue-3.x-4fc08d)](https://vuejs.org/)
 [![Python](https://img.shields.io/badge/Python-3.11-3776ab)](https://www.python.org/)
 [![InfluxDB](https://img.shields.io/badge/InfluxDB-2.7-22ad5c)](https://www.influxdata.com/)
 
-面向工业 4.0 场景，对设备温度、振动、压力等传感器数据进行实时采集，利用 **Logistic 回归**模型预测故障概率，结合 Spring Cloud 微服务架构与 WebSocket 实现毫秒级预警推送，助力企业实现**预测性维护**。
+面向工业 4.0 场景，对设备温度、振动、压力等传感器数据进行实时采集，利用 **Logistic 回归**模型预测故障概率，结合 Spring Cloud 微服务架构与 WebSocket 实现实时预警推送，助力企业实现**预测性维护**。
 
 ---
 
@@ -56,7 +56,7 @@
 |:-----|:-----|
 | **前端** | Vue 3 + Composition API, Element Plus, ECharts, Pinia, Vite |
 | **网关** | Spring Cloud Gateway, JWT 认证过滤, CORS, 安全头注入 |
-| **微服务** | Spring Boot 3.2, Spring Cloud 2023, OpenFeign, Resilience4j, MyBatis |
+| **微服务** | Spring Boot 3.1, Spring Cloud 2022, OpenFeign, Resilience4j, MyBatis-Plus |
 | **机器学习** | Python 3.11, Flask, Scikit-learn (LogisticRegression), Matplotlib, Joblib |
 | **时序数据库** | InfluxDB 2.7 — 传感器数据存储与 Flux 查询 |
 | **关系数据库** | MySQL 8.0 — 用户/设备/告警/维修业务数据 |
@@ -181,7 +181,9 @@ cd frontend && npm run dev
 | **告警管理** | 告警列表、分页筛选、确认/解决操作 |
 | **设备台账** | 设备 CRUD、状态管理、传感器配置 |
 | **维修记录** | 维修工单 CRUD，关联告警记录 |
-| **模型管理** | 6 类设备模型指标卡片、单类型/全量训练、版本历史、阈值配置 |
+| **消息中心** | WebSocket 告警通知汇总、已读/未读管理 |
+| **操作日志** | 用户操作行为审计追踪 |
+| **模型管理** | 6 类设备模型指标卡片、数据集展示、单类型/全量训练、版本历史、阈值配置 |
 
 ---
 
