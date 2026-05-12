@@ -108,6 +108,60 @@
       </el-col>
     </el-row>
 
+    <!-- 训练数据集管理区 -->
+    <el-row :gutter="20" style="margin-top: 20px;" class="animate-fade-in delay-200">
+      <el-col :span="24">
+        <el-card shadow="hover">
+          <template #header>
+            <div class="card-header-flex">
+              <span class="card-title">训练数据集</span>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <el-select v-model="datasetFilter" placeholder="设备类型" size="small" style="width: 140px;" clearable @change="loadDatasetData">
+                  <el-option v-for="dt in deviceTypes" :key="dt" :label="dt" :value="dt" />
+                </el-select>
+                <el-button size="small" @click="loadDatasetData" :loading="datasetLoading">刷新</el-button>
+              </div>
+            </div>
+          </template>
+          <div v-if="datasetSummary.total > 0" class="dataset-summary">
+            <span>共 <strong>{{ datasetSummary.total }}</strong> 条</span>
+            <el-tag type="danger" size="small" style="margin-left: 8px;">故障 {{ datasetSummary.fault }}</el-tag>
+            <el-tag type="success" size="small" style="margin-left: 4px;">正常 {{ datasetSummary.normal }}</el-tag>
+          </div>
+          <el-table :data="datasetRecords" stripe size="small" style="margin-top: 10px;" max-height="500" v-loading="datasetLoading">
+            <el-table-column prop="device_type" label="设备类型" width="100" />
+            <el-table-column prop="window_start" label="窗口起始" width="170">
+              <template #default="{ row }">{{ formatTimestamp(row.window_start) }}</template>
+            </el-table-column>
+            <el-table-column prop="window_end" label="窗口结束" width="170">
+              <template #default="{ row }">{{ formatTimestamp(row.window_end) }}</template>
+            </el-table-column>
+            <el-table-column v-for="fn in datasetFeatureNames" :key="fn" :prop="fn" :label="fn" width="120" align="right">
+              <template #default="{ row }">{{ row[fn] !== undefined ? row[fn].toFixed(4) : '--' }}</template>
+            </el-table-column>
+            <el-table-column prop="label" label="标签" width="80" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-tag v-if="row.label === '故障'" type="danger" size="small">故障</el-tag>
+                <el-tag v-else type="success" size="small">正常</el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div style="display: flex; justify-content: center; margin-top: 12px;">
+            <el-pagination
+              v-model:current-page="datasetPage"
+              :page-size="datasetSize"
+              :total="datasetSummary.total"
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next"
+              @current-change="loadDatasetData"
+              @size-change="handleDatasetSizeChange"
+            />
+          </div>
+          <el-empty v-if="!datasetLoading && datasetRecords.length === 0" description="暂无训练数据" />
+        </el-card>
+      </el-col>
+    </el-row>
+
     <!-- 版本历史时间线 -->
     <el-row :gutter="20" style="margin-top: 20px;" class="animate-fade-in delay-200">
       <el-col :span="24">
@@ -163,7 +217,7 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getModelMetrics, retrainModel, getModelVersions } from '@/api/ml'
+import { getModelMetrics, retrainModel, getModelVersions, getDataset } from '@/api/ml'
 import { getThreshold, updateThreshold } from '@/api/alert'
 
 const retrainLoading = ref(false)
@@ -174,6 +228,14 @@ const allMetrics = ref({})
 const allVersions = ref({})
 
 const thresholdForm = reactive({ value: 0.7 })
+const deviceTypes = ['工业机器人', '数控机床', '输送设备', '焊接设备', '压力设备', '包装设备']
+const datasetFilter = ref('')
+const datasetLoading = ref(false)
+const datasetRecords = ref([])
+const datasetPage = ref(1)
+const datasetSize = ref(20)
+const datasetSummary = reactive({ total: 0, fault: 0, normal: 0 })
+const datasetFeatureNames = ref([])
 
 const modelList = computed(() => {
   const deviceTypes = ['工业机器人', '数控机床', '输送设备', '焊接设备', '压力设备', '包装设备']
@@ -283,6 +345,39 @@ async function updateThresholdValue() {
   } catch (error) { console.error('更新阈值失败:', error) }
 }
 
+async function loadDatasetData() {
+  datasetLoading.value = true
+  try {
+    const params = { page: datasetPage.value, size: datasetSize.value }
+    if (datasetFilter.value) params.device_type = datasetFilter.value
+    const res = await getDataset(params)
+    const data = res.data || {}
+    datasetRecords.value = data.records || []
+    datasetSummary.total = data.summary?.total || 0
+    datasetSummary.fault = data.summary?.fault || 0
+    datasetSummary.normal = data.summary?.normal || 0
+    datasetFeatureNames.value = data.feature_names || []
+  } catch (error) {
+    console.error('加载数据集失败:', error)
+  } finally {
+    datasetLoading.value = false
+  }
+}
+
+function handleDatasetSizeChange(size) {
+  datasetSize.value = size
+  datasetPage.value = 1
+  loadDatasetData()
+}
+
+function formatTimestamp(ts) {
+  if (!ts) return '--'
+  if (ts.includes('T')) {
+    return ts.replace('T', ' ').substring(0, 19)
+  }
+  return ts
+}
+
 function getMetricClass(value) {
   if (value === undefined || value === null) return ''
   if (value >= 0.9) return 'excellent'
@@ -295,6 +390,7 @@ onMounted(() => {
   loadMetrics()
   loadVersions()
   loadThreshold()
+  loadDatasetData()
 })
 </script>
 
@@ -339,4 +435,5 @@ onMounted(() => {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+.dataset-summary { font-size: 13px; color: #5c5750; display: flex; align-items: center; }
 </style>

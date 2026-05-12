@@ -62,3 +62,11 @@ export function healthCheck() {
     method: 'get'
   })
 }
+
+export function getDataset(params) {
+  return request({
+    url: '/ml/dataset',
+    method: 'get',
+    params
+  })
+}

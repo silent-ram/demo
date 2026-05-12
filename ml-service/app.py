@@ -6,6 +6,9 @@ from collections import deque
 import os
 import json
 import requests
+from datetime import datetime, timezone, timedelta
+
+TZ_SHANGHAI = timezone(timedelta(hours=8))
 
 from train import train_all_with_real_data, train_single_device_type
 from predict import (
@@ -14,6 +17,7 @@ from predict import (
 )
 from chart import generate_trend_chart
 from model_version_manager import get_version_manager
+from data_fetcher import get_data_fetcher
 
 app = Flask(__name__)
 
@@ -255,7 +259,15 @@ def chart_trend():
                     pressure = []
                     for m in metrics:
                         ts = m.get('timestamp', '')
-                        timestamps.append(ts.split('T')[1][:8] if 'T' in ts else ts)
+                        if 'T' in ts:
+                            try:
+                                dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                                local_dt = dt.astimezone(TZ_SHANGHAI)
+                                timestamps.append(local_dt.strftime('%H:%M:%S'))
+                            except (ValueError, TypeError):
+                                timestamps.append(ts.split('T')[1][:8] if 'T' in ts else ts)
+                        else:
+                            timestamps.append(ts)
                         temperature.append(m.get('temperature', 0))
                         vibration.append(m.get('vibration', 0))
                         pressure.append(m.get('pressure', 0))
@@ -421,6 +433,35 @@ def rollback_model():
     except Exception as e:
         app.logger.error(f"回滚失败: {e}", exc_info=True)
         return jsonify({'success': False, 'message': f'回滚失败: {str(e)}', 'data': None}), 500
+
+
+@app.route('/ml/dataset', methods=['GET'])
+def get_dataset():
+    """查询训练数据集（分页）。"""
+    try:
+        device_type = request.args.get('device_type') or None
+        page = request.args.get('page', 1, type=int)
+        size = request.args.get('size', 20, type=int)
+
+        if page < 1:
+            page = 1
+        if size < 1 or size > 100:
+            size = 20
+
+        fetcher = get_data_fetcher()
+        result = fetcher.query_dataset(device_type=device_type, page=page, size=size)
+
+        return jsonify({
+            'success': True,
+            'data': result
+        })
+    except Exception as e:
+        app.logger.error(f"查询数据集失败: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': f'查询数据集失败: {str(e)}',
+            'data': None
+        }), 500
 
 
 @app.route('/ml/chart/fault-probability', methods=['GET'])

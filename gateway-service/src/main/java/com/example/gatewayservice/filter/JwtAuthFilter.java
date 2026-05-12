@@ -34,6 +34,11 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             "/api/auth/login",
             "/api/auth/register",
             "/api/ml/health",
+            "/api/ml/model/metrics",
+            "/api/ml/model/versions",
+            "/api/ml/chart/trend",
+            "/api/ml/chart/fault-probability",
+            "/api/ml/dataset",
             "/ws/"  // WebSocket 认证由后端 alert-service 自行处理，Gateway 只负责代理转发
     );
 

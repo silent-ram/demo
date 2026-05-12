@@ -21,6 +21,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -50,6 +52,7 @@ public class InfluxDBService {
     private String url;
 
     private static final String MEASUREMENT = "sensor_data";
+    private static final ZoneId ZONE_SHANGHAI = ZoneId.of("Asia/Shanghai");
 
     public void writeMetric(MetricDTO metric) {
         Point point = Point.measurement(MEASUREMENT)
@@ -131,7 +134,7 @@ public class InfluxDBService {
             for (FluxRecord record : table.getRecords()) {
                 MetricDTO metric = new MetricDTO();
                 metric.setDeviceId(deviceId);
-                metric.setTimestamp(record.getTime());
+                metric.setTimestamp(record.getTime().atZone(ZONE_SHANGHAI).toInstant());
 
                 Object temp = record.getValueByKey("temperature");
                 if (temp instanceof Number) metric.setTemperature(((Number) temp).doubleValue());
@@ -179,7 +182,7 @@ public class InfluxDBService {
                     metric.setValue(((Number) valueObj).doubleValue());
                 }
                 metric.setUnit((String) record.getValueByKey("unit"));
-                metric.setTimestamp(record.getTime());
+                metric.setTimestamp(record.getTime().atZone(ZONE_SHANGHAI).toInstant());
                 results.add(metric);
             }
         }
@@ -287,7 +290,7 @@ public class InfluxDBService {
                             metric.setValue(((Number) valueObj).doubleValue());
                         }
                         metric.setUnit((String) record.getValueByKey("unit"));
-                        metric.setTimestamp(record.getTime());
+                        metric.setTimestamp(record.getTime().atZone(ZONE_SHANGHAI).toInstant());
                         results.add(metric);
                     }
                 }
@@ -325,7 +328,7 @@ public class InfluxDBService {
                     metric.setValue(((Number) valueObj).doubleValue());
                 }
                 metric.setUnit((String) record.getValueByKey("unit"));
-                metric.setTimestamp(record.getTime());
+                metric.setTimestamp(record.getTime().atZone(ZONE_SHANGHAI).toInstant());
                 results.add(metric);
             }
         }
@@ -372,7 +375,7 @@ public class InfluxDBService {
         for (FluxTable table : tables) {
             for (FluxRecord record : table.getRecords()) {
                 Map<String, Object> point = new HashMap<>();
-                point.put("timestamp", record.getTime().toString());
+                point.put("timestamp", record.getTime().atZone(ZONE_SHANGHAI).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
                 Object value = record.getValueByKey("_value");
                 point.put("value", value instanceof Number ? ((Number) value).doubleValue() : 0.0);
                 results.add(point);

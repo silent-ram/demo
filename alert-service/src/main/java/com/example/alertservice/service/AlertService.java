@@ -245,21 +245,18 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
     }
 
     /**
-     * 发送消息给所有管理员
+     * 发送消息给所有用户
      */
     private void sendMessageToAdmins(Alert alert) {
         try {
             var userResult = userServiceClient.getUserList();
             if (userResult != null && userResult.getData() != null) {
                 for (var user : userResult.getData()) {
-                    String role = user.get("role") != null ? user.get("role").toString() : "";
-                    if ("ADMIN".equals(role)) {
-                        Long userId = user.get("id") != null ? Long.valueOf(user.get("id").toString()) : null;
-                        if (userId != null) {
-                            String title = "【" + alert.getAlertLevel() + "级告警】" + alert.getDeviceName();
-                            String content = alert.getMessage();
-                            messageService.sendMessage(userId, "ALERT", title, content, alert.getId());
-                        }
+                    Long userId = user.get("id") != null ? Long.valueOf(user.get("id").toString()) : null;
+                    if (userId != null) {
+                        String title = "【" + alert.getAlertLevel() + "级告警】" + alert.getDeviceName();
+                        String content = alert.getMessage();
+                        messageService.sendMessage(userId, "ALERT", title, content, alert.getId());
                     }
                 }
             }

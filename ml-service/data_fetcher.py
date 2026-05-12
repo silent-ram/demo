@@ -7,9 +7,10 @@ InfluxDB 数据提取器 v2.0
 
 import os
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from influxdb_client import InfluxDBClient
 import logging
+import requests as http_requests
 
 from config_loader import get_sensor_codes, get_device_type_names
 from feature_extractor import FeatureExtractor
@@ -25,6 +26,7 @@ MEASUREMENT = 'sensor_data'
 FAULT_THRESHOLD = 0.7
 NORMAL_THRESHOLD = 0.1
 CONSECUTIVE_POINTS = 5
+TZ_SHANGHAI = timezone(timedelta(hours=8))
 MIN_WINDOWS_PER_TYPE = 500
 
 
@@ -35,6 +37,16 @@ def _to_float(val):
         return float(val)
     except (ValueError, TypeError):
         return None
+
+
+def _to_local_time(dt):
+    """将 InfluxDB 返回的时间转为 UTC+8 本地时间字符串。"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local_dt = dt.astimezone(TZ_SHANGHAI)
+    return local_dt.strftime('%Y-%m-%dT%H:%M:%S')
 
 
 class InfluxDBDataFetcher:
@@ -48,6 +60,27 @@ class InfluxDBDataFetcher:
         )
         self.query_api = self.client.query_api()
         self.extractor = FeatureExtractor()
+        self._device_type_cache = None
+
+    def _get_device_type_map(self) -> dict:
+        """从 device-service 获取 device_id → device_type 映射。"""
+        if self._device_type_cache is not None:
+            return self._device_type_cache
+
+        mapping = {}
+        try:
+            device_url = os.environ.get('DEVICE_SERVICE_URL', 'http://localhost:8082')
+            resp = http_requests.get(f'{device_url}/device', timeout=5)
+            if resp.status_code == 200:
+                result = resp.json()
+                records = result.get('data', {}).get('records', [])
+                for r in records:
+                    mapping[str(r['id'])] = r.get('type', '未知')
+        except Exception as e:
+            logger.warning('获取设备类型映射失败: %s', e)
+
+        self._device_type_cache = mapping
+        return mapping
 
     def query_device_history(self, device_id: str, hours: int = 168) -> list:
         """
@@ -103,7 +136,7 @@ class InfluxDBDataFetcher:
             for table in tables:
                 for record in table.records:
                     row = {
-                        'timestamp': record.get_time().isoformat(),
+                        'timestamp': _to_local_time(record.get_time()),
                         'temperature': _to_float(record.values.get('temperature')),
                         'vibration': _to_float(record.values.get('vibration')),
                         'pressure': _to_float(record.values.get('pressure')),
@@ -266,6 +299,116 @@ class InfluxDBDataFetcher:
             'positive': int(sum(y)),
             'negative': int(len(y) - sum(y)),
             'source': 'influxdb'
+        }
+
+    def query_dataset(self, device_type=None, page=1, size=20):
+        """查询训练数据集（分页），复用训练时的窗口+标签筛选逻辑。
+
+        与 extract_features_with_proba_labels 使用完全相同的筛选链路：
+        滑动窗口(10) → 缺失值检查 → 连续5点标签判定 → 特征提取。
+
+        Returns:
+            dict: {total, page, size, feature_names, records, summary}
+        """
+        raw_data = self.query_device_history_by_type(None, hours=168)
+
+        # 获取 device_id → device_type 映射
+        device_type_map = self._get_device_type_map()
+
+        # 按 device_type（而非 device_id）分组
+        grouped = {}
+        for row in raw_data:
+            did = row.get('device_id', '未知')
+            dtype = device_type_map.get(did, did)
+            # 如果指定了 device_type，直接跳过不匹配的
+            if device_type and dtype != device_type:
+                continue
+            grouped.setdefault(dtype, []).append(row)
+
+        sensor_codes = get_sensor_codes()
+        feature_names = FeatureExtractor.get_feature_names()
+        window_size = 10
+
+        all_records = []
+        fault_count = 0
+        normal_count = 0
+
+        for dtype, rows in grouped.items():
+            rows.sort(key=lambda r: r.get('timestamp', ''))
+
+            for i in range(len(rows) - window_size + 1):
+                window = rows[i:i + window_size]
+
+                # 缺失值检查（与训练逻辑一致）
+                proba_values = []
+                has_missing = False
+                for point in window:
+                    if (point.get('temperature') is None or
+                            point.get('vibration') is None or
+                            point.get('pressure') is None):
+                        has_missing = True
+                        break
+                    fp = point.get('fault_probability')
+                    if fp is None:
+                        has_missing = True
+                        break
+                    proba_values.append(float(fp))
+                if has_missing:
+                    continue
+
+                # 标签判定（与训练逻辑一致）
+                label_value = self._compute_label_from_proba(proba_values)
+                if label_value is None:
+                    continue
+
+                # 构建传感器数据用于特征提取（与训练逻辑一致）
+                sensor_data = []
+                for point in window:
+                    ts = point['timestamp']
+                    for code in sensor_codes:
+                        sensor_data.append({
+                            'timestamp': ts,
+                            'sensor_code': code,
+                            'value': point[code]
+                        })
+
+                features = self.extractor.extract_features(sensor_data, dtype)
+                if not features or len(features) != self.extractor.get_expected_feature_count():
+                    continue
+
+                label_str = '故障' if label_value == 1 else '正常'
+                if label_value == 1:
+                    fault_count += 1
+                else:
+                    normal_count += 1
+
+                record = {
+                    'device_type': dtype,
+                    'window_start': window[0].get('timestamp', ''),
+                    'window_end': window[-1].get('timestamp', ''),
+                    'label': label_str,
+                }
+                for fname, fval in zip(feature_names, features):
+                    record[fname] = round(float(fval), 6)
+
+                all_records.append(record)
+
+        total = len(all_records)
+        start = (page - 1) * size
+        end = start + size
+        records = all_records[start:end]
+
+        return {
+            'total': total,
+            'page': page,
+            'size': size,
+            'feature_names': feature_names,
+            'records': records,
+            'summary': {
+                'total': total,
+                'fault': fault_count,
+                'normal': normal_count
+            }
         }
 
     def close(self):

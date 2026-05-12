@@ -71,7 +71,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElNotification } from 'element-plus'
 import { getDeviceList, getMaintenancesByDevice } from '@/api/device'
@@ -169,10 +169,23 @@ function connectWebSocket() {
 
       ElNotification({
         title: '【' + alert.alertLevel + '级告警】' + alert.deviceName,
-        message: '故障概率: ' + prob + '%\n告警类型: ' + (alert.type || '未知') + '\n消息: ' + (alert.message || '无') + maintenanceInfo,
+        message: h('div', { style: 'line-height: 1.8;' }, [
+          h('p', {}, '故障概率: ' + prob + '%'),
+          h('p', {}, '告警类型: ' + (alert.type || '未知')),
+          h('p', {}, '消息: ' + (alert.message || '无')),
+          maintenanceInfo ? h('p', {}, maintenanceInfo.trim()) : null,
+          h('p', { style: 'margin-top: 10px;' }, [
+            h('span', {
+              style: 'color: #0077b6; cursor: pointer; text-decoration: underline; font-weight: 600;',
+              onClick: () => router.push('/alerts')
+            }, '查看详情 →')
+          ])
+        ]),
         type: 'warning',
         duration: 10000,
-        showClose: true
+        showClose: true,
+        customClass: 'center-notification',
+        offset: 0
       })
       loadDevices()
     } catch (e) {
@@ -241,7 +254,7 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
+<style>
 .monitoring {
   padding: 4px;
 }
@@ -422,5 +435,24 @@ onUnmounted(() => {
 .device-card:hover .view-detail {
   color: #e85d04;
   transform: translateX(3px);
+}
+
+/* 居中告警通知 */
+.center-notification {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 420px !important;
+  z-index: 9999 !important;
+  border-left: 5px solid #f4a261 !important;
+  box-shadow: 0 8px 32px rgba(214, 40, 40, 0.2) !important;
+}
+
+.center-notification .el-notification__title {
+  color: #d62828;
+  font-weight: 700;
 }
 </style>
