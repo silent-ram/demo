@@ -1,49 +1,20 @@
 <template>
   <div class="login-container">
-    <!-- 左侧品牌区 -->
-    <div class="brand-section">
-      <div class="brand-card">
-        <div class="brand-decoration">
-          <div class="deco-circle dc1"></div>
-          <div class="deco-circle dc2"></div>
-          <div class="deco-circle dc3"></div>
+    <!-- 左侧可爱动画区 -->
+    <div class="brand-section" @click="onCatClick" @mousemove="onMouseMove">
+      <div class="brand-canvas">
+        <div class="bg-circle bc1"></div>
+        <div class="bg-circle bc2"></div>
+        <div class="bg-circle bc3"></div>
+        <div ref="lottieContainer" class="lottie-cat"></div>
+        <div v-if="hearts.length" class="hearts-layer">
+          <div
+            v-for="h in hearts" :key="h.id"
+            class="float-heart"
+            :style="{ left: h.x + 'px', top: h.y + 'px' }"
+          >&#10084;</div>
         </div>
-
-        <div class="brand-icon">
-          <el-icon :size="48"><Monitor /></el-icon>
-        </div>
-        <h3 class="brand-title">智能预警系统</h3>
-        <p class="brand-subtitle">Industrial Fault Warning</p>
-
-        <div class="brand-features">
-          <div class="feature-item">
-            <div class="feature-icon">
-              <el-icon><DataAnalysis /></el-icon>
-            </div>
-            <div class="feature-text">
-              <h4>实时监测</h4>
-              <p>全天候设备状态监控</p>
-            </div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-icon">
-              <el-icon><Cpu /></el-icon>
-            </div>
-            <div class="feature-text">
-              <h4>精准预测</h4>
-              <p>AI 驱动的故障预警</p>
-            </div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-icon">
-              <el-icon><Tools /></el-icon>
-            </div>
-            <div class="feature-text">
-              <h4>高效维护</h4>
-              <p>智能化工单派发</p>
-            </div>
-          </div>
-        </div>
+        <div class="sparkle" :style="{ left: sparkle.x + 'px', top: sparkle.y + 'px', opacity: sparkle.show }"></div>
       </div>
     </div>
 
@@ -124,17 +95,25 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login, getUserInfo } from '@/api/user'
 import { useUserStore } from '@/stores/user'
+import lottie from 'lottie-web'
+import catAnim from '@/assets/lottie/cute-cat.json'
 
 const router = useRouter()
 const userStore = useUserStore()
 
 const formRef = ref(null)
 const loading = ref(false)
+const lottieContainer = ref(null)
+let anim = null
+let heartId = 0
+
+const hearts = ref([])
+const sparkle = reactive({ x: 0, y: 0, show: 0 })
 
 const form = reactive({
   username: '',
@@ -149,6 +128,46 @@ const rules = {
     { required: true, message: '请输入密码', trigger: 'blur' }
   ]
 }
+
+function onMouseMove(e) {
+  const rect = e.currentTarget.getBoundingClientRect()
+  sparkle.x = e.clientX - rect.left
+  sparkle.y = e.clientY - rect.top
+  sparkle.show = 1
+  clearTimeout(sparkle._timer)
+  sparkle._timer = setTimeout(() => { sparkle.show = 0 }, 300)
+}
+
+function onCatClick(e) {
+  const rect = e.currentTarget.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+  const id = ++heartId
+  hearts.value.push({ id, x, y })
+  setTimeout(() => {
+    hearts.value = hearts.value.filter(h => h.id !== id)
+  }, 1200)
+  if (anim) {
+    anim.setSpeed(2.5)
+    setTimeout(() => anim.setSpeed(1), 600)
+  }
+}
+
+onMounted(() => {
+  if (lottieContainer.value) {
+    anim = lottie.loadAnimation({
+      container: lottieContainer.value,
+      renderer: 'svg',
+      loop: true,
+      autoplay: true,
+      animationData: catAnim
+    })
+  }
+})
+
+onUnmounted(() => {
+  anim?.destroy()
+})
 
 async function handleLogin() {
   const valid = await formRef.value.validate().catch(() => false)
@@ -173,6 +192,7 @@ async function handleLogin() {
 </script>
 
 <style scoped>
+/* ==================== 容器布局 ==================== */
 .login-container {
   min-height: 100vh;
   display: flex;
@@ -183,158 +203,128 @@ async function handleLogin() {
   overflow: hidden;
 }
 
-/* 装饰圆形 */
-.brand-card {
+/* ==================== 左侧品牌动画区 ==================== */
+.brand-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
   position: relative;
+  overflow: hidden;
+  background: transparent;
 }
 
-.deco-circle {
+.brand-canvas {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 背景装饰圆 */
+.bg-circle {
   position: absolute;
   border-radius: 50%;
   pointer-events: none;
+  animation: pulse 4s ease-in-out infinite;
 }
 
-.dc1 {
+.bc1 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(200, 170, 140, 0.1) 0%, transparent 70%);
+  top: -80px;
+  left: -100px;
+  animation-delay: 0s;
+}
+
+.bc2 {
   width: 300px;
   height: 300px;
-  background: linear-gradient(135deg, rgba(232, 93, 4, 0.12), rgba(244, 162, 97, 0.08));
-  top: -100px;
-  left: -150px;
+  background: radial-gradient(circle, rgba(190, 160, 130, 0.08) 0%, transparent 70%);
+  bottom: -50px;
+  right: -60px;
+  animation-delay: 1.5s;
 }
 
-.dc2 {
+.bc3 {
   width: 200px;
   height: 200px;
-  background: linear-gradient(135deg, rgba(0, 119, 182, 0.1), rgba(0, 168, 232, 0.06));
-  bottom: -50px;
-  right: -80px;
+  background: radial-gradient(circle, rgba(210, 180, 150, 0.08) 0%, transparent 70%);
+  top: 30%;
+  right: 10%;
+  animation-delay: 3s;
 }
 
-.dc3 {
-  width: 120px;
-  height: 120px;
-  background: linear-gradient(135deg, rgba(45, 147, 108, 0.1), rgba(45, 147, 108, 0.05));
-  top: 50%;
-  left: -60px;
-}
-
-/* 左侧品牌区 */
-.brand-section {
-  display: none;
-}
-
-.brand-card {
-  background: linear-gradient(135deg, #ffffff, #f5f2ed);
-  border-radius: 28px;
-  padding: 52px 48px;
-  text-align: center;
+/* ==================== 漂浮爱心 ==================== */
+.lottie-cat {
+  width: 360px;
+  height: 360px;
   position: relative;
-  overflow: hidden;
-  max-width: 340px;
-  box-shadow: 0 25px 80px rgba(45, 42, 38, 0.12);
-  border: 1px solid rgba(45, 42, 38, 0.08);
+  z-index: 5;
+  cursor: pointer;
+  transition: transform 0.3s ease;
 }
 
-.brand-decoration {
+.lottie-cat:hover {
+  transform: scale(1.05);
+}
+
+.lottie-cat:active {
+  transform: scale(0.95);
+}
+
+.hearts-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: 10;
 }
 
-.brand-icon {
-  width: 90px;
-  height: 90px;
-  background: linear-gradient(135deg, #e85d04, #ff7b3d);
-  border-radius: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  margin: 0 auto 24px;
-  position: relative;
-  z-index: 1;
-  box-shadow: 0 10px 40px rgba(232, 93, 4, 0.35);
-}
-
-.brand-title {
-  font-family: 'Playfair Display', 'Noto Serif SC', Georgia, serif;
-  font-size: 28px;
-  font-weight: 700;
-  color: #2d2a26;
-  letter-spacing: 3px;
-  margin-bottom: 8px;
-  position: relative;
-  z-index: 1;
-}
-
-.brand-subtitle {
-  font-size: 12px;
-  color: #9a948c;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  margin-bottom: 48px;
-  position: relative;
-  z-index: 1;
-}
-
-.brand-features {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  position: relative;
-  z-index: 1;
-}
-
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
-  background: rgba(45, 42, 38, 0.04);
-  border: 1px solid rgba(45, 42, 38, 0.06);
-  border-radius: 14px;
-  text-align: left;
-  transition: all 0.3s ease;
-}
-
-.feature-item:hover {
-  background: rgba(45, 42, 38, 0.08);
-  transform: translateX(5px);
-}
-
-.feature-icon {
-  width: 42px;
-  height: 42px;
-  background: linear-gradient(135deg, rgba(232, 93, 4, 0.3), rgba(244, 162, 97, 0.2));
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #ff7b3d;
+.float-heart {
+  position: absolute;
+  color: #e85d6f;
   font-size: 20px;
+  animation: heart-rise 1.2s ease-out forwards;
+  pointer-events: none;
 }
 
-.feature-text h4 {
-  color: #2d2a26;
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 2px;
+.sparkle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: radial-gradient(circle, rgba(255, 200, 100, 0.8), transparent);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 8;
+  filter: blur(2px);
 }
 
-.feature-text p {
-  color: #9a948c;
-  font-size: 12px;
+@keyframes heart-rise {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-80px) scale(0.3); opacity: 0; }
 }
 
-/* 登录表单区 */
+/* ==================== 动画关键帧 ==================== */
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+/* ==================== 登录表单区 ==================== */
 .login-section {
   position: relative;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  width: 100%;
-  padding-right: 10%;
+  width: 480px;
+  min-width: 380px;
+  padding-right: 8%;
 }
 
 .login-card {
@@ -472,61 +462,6 @@ async function handleLogin() {
   margin-right: 8px;
 }
 
-/* 底部凭证 */
-.login-footer {
-  margin-top: 32px;
-}
-
-.divider-line {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.divider-line::before,
-.divider-line::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(45, 42, 38, 0.12), transparent);
-}
-
-.divider-line span {
-  color: #9a948c;
-  font-size: 12px;
-}
-
-.credentials {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.cred-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: #faf8f5;
-  border: 1px solid rgba(45, 42, 38, 0.06);
-  border-radius: 10px;
-  font-size: 13px;
-  color: #5c5750;
-  transition: all 0.25s ease;
-}
-
-.cred-item:hover {
-  background: #f5f2ed;
-  transform: translateX(5px);
-}
-
-.cred-text {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  color: #9a948c;
-}
-
 /* 底部版权 */
 .footer-deco {
   position: fixed;
@@ -538,10 +473,15 @@ async function handleLogin() {
   z-index: 10;
 }
 
-/* 响应式 */
+/* ==================== 响应式 ==================== */
 @media (max-width: 1100px) {
   .brand-section {
     display: none;
+  }
+  .login-section {
+    width: 100%;
+    padding-right: 0;
+    justify-content: center;
   }
 }
 
